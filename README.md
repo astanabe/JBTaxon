@@ -28,6 +28,8 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
 
 ## 種名チェックリストについて
 
+以下にソースとなるチェックリストを全て掲載します。なお、複数のソース間で衝突する場合は、(1) より狭い分類群のソースを優先、(2) 次いでより新しいソースを優先します。
+
 ### 全体
 
 以下のURLで提供されているExcelファイルがデータファイルです(平成18年以降の「全生物種」)。`fetch_data.pl`が実行されると自動的にダウンロードされます。
@@ -58,9 +60,7 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
 
 - https://insect-web.rad.naro.go.jp/flame/tree
 
-#### 滋賀県昆虫目録2025
-
-以下のURLで提供されているExcelファイルがデータファイルです。Google Driveからは自動ダウンロードが難しいので、手動でダウンロードしてディレクトリ内に配置して下さい。
+また、以下のURLで提供されているExcelファイルがデータファイルです。Google Driveからは自動ダウンロードが難しいので、手動でダウンロードしてディレクトリ内に配置して下さい。
 
 - https://sites.google.com/view/shigainsect/
 
@@ -118,51 +118,51 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
 
 - https://insect-web.rad.naro.go.jp/flame/tree
 
-### タナイス類
+### タナイス類 (Tanaids)
 
 以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://sites.google.com/site/tnidjpn/tanaidacea/jpnlist
 
-### ミミズ
+### ミミズ (Earthworms)
 
 以下のURLで提供されているExcelファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://japanese-mimizu.jimdofree.com/%E3%83%9F%E3%83%9F%E3%82%BA%E3%81%AE%E5%88%86%E9%A1%9E/
 
-### ワラジムシ
+### ワラジムシ (Isopods)
 
 以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://www.warajimushi.com/Species/List_species.html
 
-### 維管束植物
+### 維管束植物 (VascularPlants)
 
 以下のURLで提供されているExcel・CSVファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - http://ylist.info/
 - https://doi.org/10.57400/data.bnmnsbot.22696618
 
-### コケ植物
+### コケ植物 (Bryophytes)
 
 以下のURLで提供されているPDFファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://doi.org/10.18968/hattoria.7.0_9
 - https://doi.org/10.18968/hattoria.9.0_53
 
-### 地衣類
+### 地衣類 (Lichens)
 
 以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://lichenjapan.jp/checklist/
 
-### 真菌
+### 真菌 (Fungi)
 
 以下のURLで提供されているExcelファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://www.mycology-jp.org/html/checklist_clist.html
 
-### 海藻
+### 海藻 (Seaweeds)
 
 以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
