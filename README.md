@@ -78,15 +78,6 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
 
 リンク切れの際は古いファイルに遡って取得します。
 
-#### 日本産アリ類の分類体系
-
-以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
-
-- http://ant.miyakyo-u.ac.jp/J/Tables/SpList201201.html
-- http://ant.miyakyo-u.ac.jp/J/Tables/SynonymsE.html
-- http://ant.miyakyo-u.ac.jp/J/Tables/SynonymsJ.html
-- http://ant.miyakyo-u.ac.jp/J/Tables/GenList200704.html
-
 #### 日本産トビケラの種リスト
 
 以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
