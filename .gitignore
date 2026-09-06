@@ -1,0 +1,45 @@
+# JBTaxon が情報源にしているチェックリストの一部は改変・再配布が禁止されている。
+# そのため生データファイルと生成物はリポジトリで配布できない (README.md 参照)。
+# 分類群ディレクトリの中身は追跡せず、各ディレクトリの README.md だけを追跡する。
+
+# 分類群ディレクトリ内の生データファイル (fetch_data.pl の取得物・手動配置分・展開物)
+/AllTaxa/*
+/Bryophytes/*
+/Earthworms/*
+/Fishes/*
+/Fungi/*
+/Insects/*
+/Isopods/*
+/Lichens/*
+/Mammals/*
+/Nematodes/*
+/Reptiles_Amphibians/*
+/Seaweeds/*
+/Spiders/*
+/Tanaids/*
+/VascularPlants/*
+
+# 各分類群ディレクトリの README.md は追跡する
+!/AllTaxa/README.md
+!/Bryophytes/README.md
+!/Earthworms/README.md
+!/Fishes/README.md
+!/Fungi/README.md
+!/Insects/README.md
+!/Isopods/README.md
+!/Lichens/README.md
+!/Mammals/README.md
+!/Nematodes/README.md
+!/Reptiles_Amphibians/README.md
+!/Seaweeds/README.md
+!/Spiders/README.md
+!/Tanaids/README.md
+!/VascularPlants/README.md
+
+# fetch_data.pl がダウンロード中に使う一時ファイル
+*.part
+
+# 生成物 (generate_database.pl / generate_dictionary.pl の出力)
+/jbtaxon_*.sqlite3
+/yomi2japname.tsv
+/yomi2sciname.tsv
