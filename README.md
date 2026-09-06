@@ -4,14 +4,14 @@ A database of Japanese biological taxon names
 
 ## JBTaxonの生成について
 
-JBTaxonが情報源にしている生物種名チェックリストは、いずれも改変や再配布が禁止されている。そのため、JBTaxon自体を配布することができない。そこで、
+JBTaxonが情報源にしている生物種名チェックリストのうちのいくつかは、改変や再配布が禁止されている。そのため、JBTaxon自体を配布することができない。そこで、
 
 1. データファイルをダウンロード
 2. 和名→学名および学名→和名テーブルのTSVを生成
 3. 和名→学名および学名→和名変換テーブルを持つSQLite3 DBを生成
 4. 和名読み→和名および和名読み→学名を日本語入力IMEで実現する辞書ファイルTSV (汎用・Mozcユーザー辞書用・Mozcシステム辞書用)を生成
 
-をそれぞれ行うスクリプトを本リポジトリで配布し、各ユーザーが自ら自分に必要なファイルをローカル環境で生成して使用する。
+をそれぞれ行うスクリプトを本リポジトリで配布し、各ユーザーが自ら自分に必要なファイルをローカル環境で生成して使用するものとする。
 
 ## 各スクリプトについて
 
@@ -24,7 +24,15 @@ JBTaxonが情報源にしている生物種名チェックリストは、いず�
 4. `generate_dictionary.pl`
   - 和名→学名および学名→和名テーブルのTSVから和名読み→和名および和名読み→学名を日本語入力IMEで実現する単一の辞書ファイルTSVを生成する
 
+なお、種より上位の高次分類群(科や門など)や、種より下位の低次分類群(亜種・品種など)の和名・学名も生データファイルに含まれていれば出力します。
+
 ## 種名チェックリストについて
+
+### 全体
+
+以下のURLで提供されているExcelファイルがデータファイルです(平成18年以降の「全生物種」)。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+
+- https://www.nilim.go.jp/lab/fbg/ksnkankyo/mizukokuweb/system/seibutsuListfile.htm
 
 ### 哺乳類 (Mammals)
 
@@ -44,73 +52,119 @@ JBTaxonが情報源にしている生物種名チェックリストは、いず�
 
 - https://www.museum.kagoshima-u.ac.jp/staff/motomura/jaf.html
 
-現在はver.42です。
-
 ### 昆虫 (Insects)
 
+以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+
+- https://insect-web.rad.naro.go.jp/flame/tree
+
 #### 滋賀県昆虫目録2025
+
+以下のURLで提供されているExcelファイルがデータファイルです。Google Driveからは自動ダウンロードが難しいので、手動でダウンロードしてディレクトリ内に配置して下さい。
 
 - https://sites.google.com/view/shigainsect/
 
 #### List-MJ 日本産蛾類総目録
 
+以下のURLで提供されているExcelファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+
 - http://listmj.mothprog.com/
 
 #### 日本産蝶類和名学名便覧
 
+以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+
 - https://web.archive.org/web/20211017231224/https://binran.lepimages.jp/
 
+リンク切れの際は古いファイルに遡って取得します。
+
 #### 日本産アリ類の分類体系
+
+以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - http://ant.miyakyo-u.ac.jp/J/Tables/SpList201201.html
 
 #### 日本産トビケラの種リスト
 
+以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+
 - https://tobikera.eco.coocan.jp/names.htm
 
 #### 日本産ハネカクシ科総目録
+
+以下のURLで提供されているPDFファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://doi.org/10.15017/26400
 
 #### 日本産有剣膜翅類目録（2016 年版）
 
+以下のURLで提供されているPDFファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+
 - https://web.archive.org/web/20220324223234/https://sc888fba2c6537423.jimcontent.com/download/version/1486475674/module/12561110890/name/Hym.list.%28Japan%292016.ver5.pdf
+
+### クモ類 (Spiders)
+
+以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+
+- https://insect-web.rad.naro.go.jp/flame/tree
 
 ### ダニ類 (Acarids)
 
 - https://sites.google.com/site/catalogueofacariofjapan/
 
+### 線形動物 (Nematodes)
+
+以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+
+- https://insect-web.rad.naro.go.jp/flame/tree
+
 ### タナイス類
+
+以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://sites.google.com/site/tnidjpn/tanaidacea/jpnlist
 
 ### ミミズ
 
-- https://japanese-mimizu.jimdofree.com/
+以下のURLで提供されているExcelファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+
+- https://japanese-mimizu.jimdofree.com/%E3%83%9F%E3%83%9F%E3%82%BA%E3%81%AE%E5%88%86%E9%A1%9E/
 
 ### ワラジムシ
+
+以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://www.warajimushi.com/Species/List_species.html
 
 ### 維管束植物
+
+以下のURLで提供されているExcel・CSVファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - http://ylist.info/
 - https://doi.org/10.57400/data.bnmnsbot.22696618
 
 ### コケ植物
 
+以下のURLで提供されているPDFファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+
 - https://doi.org/10.18968/hattoria.7.0_9
 - https://doi.org/10.18968/hattoria.9.0_53
 
 ### 地衣類
 
+以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+
 - https://lichenjapan.jp/checklist/
 
 ### 真菌
 
+以下のURLで提供されているExcelファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+
 - https://www.mycology-jp.org/html/checklist_clist.html
 
 ### 海藻
+
+以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://tonysharks.com/Seaweeds_list/Seaweed_list_top.html
 
@@ -122,7 +176,7 @@ JBTaxonが情報源にしている生物種名チェックリストは、いず�
 japname    sciname    rank    subrank
 ```
 
-実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、scinameが同一でjapnameが異なる行が生じる。scinameにはシノニムは使用しない。
+実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、scinameが同一でjapnameが異なる行が生じる。scinameにはシノニムは使用しない。rank・subrankについては後述。
 
 ### 学名→和名テーブル
 
@@ -130,7 +184,7 @@ japname    sciname    rank    subrank
 sciname    japname    rank    subrank
 ```
 
-実際にはスペースではなくタブを区切りとして使用する。学名シノニムがある場合、japnameが同一でscinameが異なる行が生じる。japnameにはシノニムは使用しない。
+実際にはスペースではなくタブを区切りとして使用する。学名シノニムがある場合、japnameが同一でscinameが異なる行が生じる。japnameにはシノニムは使用しない。rank・subrankについては後述。
 
 ### 和名読み→和名辞書
 
@@ -163,3 +217,46 @@ yomi    lid    rid    cost    sciname
 ```
 
 ただし、`id.def`のファイルパスを`--id-def`オプションで与える必要がある。costはデフォルトで30000だが、`--scicost`オプションで変更可能。lidとridは、種名・亜種名では「名詞,固有名詞,一般」の値、種より上位の分類群名では「名詞,固有名詞,組織」の値とします。
+
+## rank・subrankについて
+
+rankは各分類階層に割り当てられた以下の数値です。
+
+1. superkingdom, domain, realm
+2. kingdom
+3. subkingdom
+4. superphylum
+5. phylum
+6. subphylum
+7. superclass
+8. class
+9. subclass
+10. infraclass
+11. cohort
+12. subcohort
+13. superorder
+14. order
+15. suborder
+16. infraorder
+17. parvorder
+18. superfamily
+19. family
+20. subfamily
+21. tribe
+22. subtribe
+23. genus
+24. subgenus
+25. section
+26. subsection
+27. series
+28. species group
+29. species subgroup
+30. species
+31. subspecies, morph, subvariety, pathogroup, serogroup
+32. varietas, biotype, genotype, serotype
+33. forma
+34. forma specialis
+35. strain
+36. isolate
+
+subrankは、基本的には値は1になりますが、上記分類階層に当てはまらない階層が、例えばfamilyとsuperfamilyの間にある場合に、その階層をrank=18,subrank=2とすることで、familyとsuperfamilyの間の階層であることを表します。間の階層が複数ある場合は、subrankを3、4、5…と増加させていきます。なお、上記のrankの値は変更されることがあります。rank値の定義は`rank.def`に記述してあります。

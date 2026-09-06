@@ -1,0 +1,47 @@
+0	no rank
+0	clade
+1	superkingdom
+1	domain
+1	realm
+2	kingdom
+3	subkingdom
+4	superphylum
+5	phylum
+6	subphylum
+7	superclass
+8	class
+9	subclass
+10	infraclass
+11	cohort
+12	subcohort
+13	superorder
+14	order
+15	suborder
+16	infraorder
+17	parvorder
+18	superfamily
+19	family
+20	subfamily
+21	tribe
+22	subtribe
+23	genus
+24	subgenus
+25	section
+26	subsection
+27	series
+28	species group
+29	species subgroup
+30	species
+31	subspecies
+31	morph
+31	subvariety
+31	pathogroup
+31	serogroup
+32	varietas
+32	biotype
+32	genotype
+32	serotype
+33	forma
+34	forma specialis
+35	strain
+36	isolate
