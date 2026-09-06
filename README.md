@@ -171,26 +171,26 @@ yomi    japname
 ### 和名→学名テーブル (japname2sciname_VERSION_BUILDDATE.tsv)
 
 ```
-japname    sciname    japvalid    rank    subrank
+japname    sciname    japvalid    rank    subrank    source    sourceauthor    sourceurl
 ```
 
-実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、scinameが同一でjapnameが異なる行が生じる。scinameにはシノニムは使用しない。japvalidは和名が有効名かどうかを示す(0はinvalidで1はvalid)。和名がシノニムなら0になる。rank・subrankについては後述。
+実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、scinameが同一でjapnameが異なる行が生じる。scinameにはシノニムは使用しない。japvalidは和名が有効名かどうかを示す(0はinvalidで1はvalid)。和名がシノニムなら0になる。rank・subrankについては後述。sourceurlは上記URLが出力される。sourceはソースのタイトル。sourceauthorは作者名。
 
 ### 学名→和名テーブル (sciname2japname_VERSION_BUILDDATE.tsv)
 
 ```
-sciname    japname    scivalid    rank    subrank
+sciname    japname    scivalid    rank    subrank    source    sourceauthor    sourceurl
 ```
 
-実際にはスペースではなくタブを区切りとして使用する。学名シノニムがある場合、japnameが同一でscinameが異なる行が生じる。japnameにはシノニムは使用しない。scivalidは学名が有効名かどうかを示す(0はinvalidで1はvalid)。学名がシノニムなら0になる。rank・subrankについては後述。
+実際にはスペースではなくタブを区切りとして使用する。学名シノニムがある場合、japnameが同一でscinameが異なる行が生じる。japnameにはシノニムは使用しない。scivalidは学名が有効名かどうかを示す(0はinvalidで1はvalid)。学名がシノニムなら0になる。rank・subrankについては後述。sourceurlは上記URLが出力される。sourceはソースのタイトル。sourceauthorは作者名。
 
 ### 和名読み→和名辞書 (yomi2japname_VERSION_BUILDDATE.tsv)
 
 ```
-yomi    japname    pos
+yomi    japname    pos    comment
 ```
 
-実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、和名シノニムの読みから有効名の和名を返す行と、和名シノニムの読みから和名シノニムを返す行も出力される。posはデフォルトでは常に`名詞`。`--for=mozc-user`のとき、`短縮読み`になる。
+実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、和名シノニムの読みから有効名の和名を返す行と、和名シノニムの読みから和名シノニムを返す行も出力される。posはデフォルトでは常に`名詞`。`--for=mozc-user`のとき、`短縮読み`になる。commentにはsource, sourceauthor, sourceurlが含まれる。
 
 `--for=mozc-system`のとき、出力フォーマットは以下に変更される。
 
@@ -198,23 +198,23 @@ yomi    japname    pos
 yomi    lid    rid    cost    japname
 ```
 
-ただし、`id.def`のファイルパスを`--id-def`オプションで与える必要がある。costはデフォルトで20000だが、`--japcost`オプションで変更可能。lidとridは、種名・亜種名では「名詞,固有名詞,一般」の値、種より上位の分類群名では「名詞,固有名詞,組織」の値とします。
+ただし、`id.def`のファイルパスを`--id-def`オプションで与える必要がある。costはデフォルトで9999だが、`--japcost`オプションで変更可能。lidとridは、種名・亜種名では「名詞,固有名詞,一般」の値、種より上位の分類群名では「名詞,固有名詞,組織」の値とします。
 
 ### 和名読み→学名辞書 (yomi2sciname_VERSION_BUILDDATE.tsv)
 
 ```
-yomi    sciname    pos
+yomi    sciname    pos    comment
 ```
 
-実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、和名シノニムの読みから有効名の学名を返す行も出力される。学名のシノニムは出力されない。posはデフォルトでは常に`名詞`。`--for=mozc-user`のとき、`短縮読み`になる。
+実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、和名シノニムの読みから有効名の学名を返す行も出力される。学名のシノニムは出力されない。posはデフォルトでは常に`名詞`。`--for=mozc-user`のとき、`短縮読み`になる。commentにはsource, sourceauthor, sourceurlが含まれる。
 
 `--for=mozc-system`のとき、出力フォーマットは以下に変更される。
 
 ```
-yomi    lid    rid    cost    sciname
+yomi    lid    rid    cost    sciname    ENGLISH
 ```
 
-ただし、`id.def`のファイルパスを`--id-def`オプションで与える必要がある。costはデフォルトで30000だが、`--scicost`オプションで変更可能。lidとridは、種名・亜種名では「名詞,固有名詞,一般」の値、種より上位の分類群名では「名詞,固有名詞,組織」の値とします。
+ただし、`id.def`のファイルパスを`--id-def`オプションで与える必要がある。costはデフォルトで9999だが、`--scicost`オプションで変更可能。lidとridは、種名・亜種名では「名詞,固有名詞,一般」の値、種より上位の分類群名では「名詞,固有名詞,組織」の値とします。`ENGLISH`はMozcに対して変換後の言語が他言語であることを示すラベルです。
 
 ## rank・subrankについて
 
