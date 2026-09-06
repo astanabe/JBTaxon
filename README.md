@@ -56,7 +56,7 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
 
 ### 昆虫 (Insects)
 
-以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+以下のURLとリンク先のHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://insect-web.rad.naro.go.jp/flame/tree
 
@@ -72,7 +72,7 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
 
 #### 日本産蝶類和名学名便覧
 
-以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+以下のURLとリンク先のHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://web.archive.org/web/20211017231224/https://binran.lepimages.jp/
 
@@ -104,13 +104,13 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
 
 ### クモ類 (Spiders)
 
-以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+以下のURLとリンク先のHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://insect-web.rad.naro.go.jp/flame/tree
 
 ### 線形動物 (Nematodes)
 
-以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+以下のURLとリンク先のHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://insect-web.rad.naro.go.jp/flame/tree
 
@@ -160,7 +160,7 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
 
 ### 海藻 (Seaweeds)
 
-以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+以下のURLとリンク先のHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://tonysharks.com/Seaweeds_list/Seaweed_list_top.html
 
