@@ -83,6 +83,9 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
 以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - http://ant.miyakyo-u.ac.jp/J/Tables/SpList201201.html
+- http://ant.miyakyo-u.ac.jp/J/Tables/SynonymsE.html
+- http://ant.miyakyo-u.ac.jp/J/Tables/SynonymsJ.html
+- http://ant.miyakyo-u.ac.jp/J/Tables/GenList200704.html
 
 #### 日本産トビケラの種リスト
 
@@ -141,7 +144,7 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
 
 ### コケ植物 (Bryophytes)
 
-以下のURLで提供されているPDFファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+以下のURLで提供されているPDFファイルがデータファイルです。J-Stageからは自動ダウンロードが禁止されているので、手動でダウンロードしてディレクトリ内に配置して下さい。
 
 - https://doi.org/10.18968/hattoria.7.0_9
 - https://doi.org/10.18968/hattoria.9.0_53
