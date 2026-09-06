@@ -46,7 +46,7 @@ yomi    japname
 
 ### 哺乳類 (Mammals)
 
-利用規約に同意する必要があるため、`fetch_data.pl`でダウンロードできません。以下のURLから手動でダウンロードしてディレクトリ内に配置して下さい。
+利用規約に同意する必要があるため、`fetch_data.pl`でダウンロードできません。以下のURLから手動でダウンロードして`Mammals`ディレクトリ内に配置して下さい(配布されているzipファイルのままで構いません。zipファイルは自動的に展開します)。
 
 - https://www.mammalogy.jp/list/index.html
 
@@ -68,7 +68,7 @@ yomi    japname
 
 - https://insect-web.rad.naro.go.jp/flame/tree
 
-また、以下のURLで提供されているExcelファイルがデータファイルです。Google Driveからは自動ダウンロードが禁止されているので、手動でダウンロードしてディレクトリ内に配置して下さい。
+また、以下のURLで提供されているExcelファイルがデータファイルです。Google Driveからは自動ダウンロードが禁止されているので、手動でダウンロードして`Insects`ディレクトリ内に配置して下さい(一括ダウンロードzipファイルでも各目のxlsxファイルでもどちらでも構いません。zipファイルは自動的に展開します)。
 
 - https://sites.google.com/view/shigainsect/
 
