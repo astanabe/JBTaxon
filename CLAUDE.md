@@ -4,13 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## リポジトリの現状
 
-現時点でこのリポジトリに存在するのは `README.md`・`rank.def`・`yomi.tsv` と、実装済みの `fetch_data.pl` のみ。残る3スクリプト (`generate_tables.pl` / `generate_database.pl` / `generate_dictionary.pl`) は**まだ実装されていない**。README.md は実装すべき仕様書として読むこと。ビルド・lint・テストの仕組みは未整備で、検証は `perl -c` と `fetch_data.pl --list` / `--dry-run` および実取得で行っている。
+現時点でこのリポジトリに存在するのは `README.md`・`rank.def`・`yomi.tsv`・`.gitignore`、実装済みの `fetch_data.pl`、および分類群ごとのディレクトリに置いた `README.md` 15件のみ。残る3スクリプト (`generate_tables.pl` / `generate_database.pl` / `generate_dictionary.pl`) は**まだ実装されていない**。README.md は実装すべき仕様書として読むこと。ビルド・lint・テストの仕組みは未整備で、検証は `perl -c` と `fetch_data.pl --list` / `--dry-run` および実取得で行っている。
 
 実行環境は Perl (`/usr/bin/perl`, v5.38)。README で規定されている4つのスクリプトはすべて `.pl`。
 
 ## プロジェクトの根幹的な制約
 
 情報源となる生物種名チェックリストの一部は改変・再配布が禁止されている。そのため **JBTaxon の成果物（DB や辞書ファイル）自体をリポジトリで配布することはできない**。配布するのは「各ユーザーがローカルで成果物を生成するためのスクリプト」だけ。生データや生成物をリポジトリにコミットする変更は、この制約に抵触するため行わないこと。
+
+`.gitignore` がこれを機械的に担保している。分類群ディレクトリの中身（`/AllTaxa/*` など15件）、`*.part`、生成物（`/jbtaxon_*.sqlite3`・`/yomi2japname.tsv`・`/yomi2sciname.tsv`）を除外し、`!/<分類群>/README.md` で各ディレクトリの `README.md` だけを追跡する。**パターンは必ず `/<分類群>/*` の形で書くこと**（`/AllTaxa/` のようにディレクトリ自体を除外すると git が中に降りなくなり、`README.md` を再包含できない）。新しい分類群ディレクトリを追加したときは、除外と再包含の2組を両方追加する。生データを置いた状態でも `git add -A` で入るのはスクリプトと `README.md` だけになる。
 
 ## パイプライン構造
 
@@ -45,6 +47,14 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 - 昆虫 (`Insects`) のうち shigainsect のExcel — Google Sheets の export API では技術的に取得できてしまうが、`docs.google.com` の robots.txt が `User-agent: * / Disallow: /` のため**自動取得が禁止されている**。この理由で手動配置とする。
 - コケ植物 (`Bryophytes`) の PDF — `www.jstage.jst.go.jp` の robots.txt が `Disallow: /*_pdf` で、取得先 `.../_pdf/-char/ja` が該当するため**自動取得が禁止されている**。この理由で手動配置とする。
 
+**手動配置ファイルの実際の名前と zip の扱い**（README のコミット `ad24468` で明文化された）:
+
+- 哺乳類 — 配布されている `list_20211223.zip` をそのまま `Mammals/` に置く。中身は `list_20211223/` 配下の `list_20211223.pdf` と `list_20211223.xlsx`。
+- shigainsect — 一括ダウンロードの zip でも、目ごとの xlsx でもどちらでもよい。2025年版は28ファイル（`アザミウマ目2025.xlsx` 〜 `ラクダムシ目2025.xlsx`）。ファイル名が年版で変わるため `fetch_data.pl` は存在チェックをせず、案内を常時表示する。
+- コケ植物 — J-STAGE が付けるファイル名のまま `7_9.pdf` / `9_53.pdf` として置く。`fetch_data.pl` の未配置チェックもこの名前を見る。
+
+**zip の展開は `generate_tables.pl` の仕事**であり、`fetch_data.pl` では展開しない。手動配置は `fetch_data.pl` の実行後に行われるので、展開を `fetch_data.pl` に置くとファイルを置いた後にもう一度実行させることになるため。
+
 また、リンク切れに備えて Web Archive の URL を情報源としているものがあり（日本産蝶類和名学名便覧、日本産有剣膜翅類目録）、README には「リンク切れの際は古いファイルに遡って取得する」旨の要求がある。
 
 なお `insect-web.rad.naro.go.jp/flame/tree` は昆虫・クモ類・線形動物の3ディレクトリで共通の情報源になっている。
@@ -60,7 +70,9 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 - 失敗しても即座に中断せず最後まで走り切り、失敗一覧を末尾に再掲する（約510件・45分の処理で1件の失敗のために全体をやり直すのは非現実的なため）。ダウンロード失敗が1件でもあれば exit 1、手動未配置は警告のみで exit 0。
 - ソース定義は `@SOURCES` の1テーブルに宣言的にまとめてある。URL 固定方針の保守がこのテーブルの編集だけで完結するのが狙い。`type` は `file` / `naro` / `binran` / `seaweed` / `manual` の5種。
 - CLI: `--dir` / `--only`（複数指定可）/ `--force` / `--list` / `--dry-run` / `--help`。`--list` と `--dry-run` は通信しない。
-- 全件取得は約510ダウンロード・約45分。
+- `manual` 種別は一切ダウンロードせず、期待パスの存在を確認して未配置のものを実行末尾にまとめて案内する。
+- 全件取得は約510ダウンロード・約45分。実測は 44分46秒（取得491 / スキップ17）。
+- **`Seaweeds/Red/Erythropeltidales.html` は情報源側のリンク切れ（HTTP 404）で恒久的に取得できない。** トップページから2箇所リンクされているがサーバ上に実体がない。このため全件取得の終了コードは常に 1 になる。URL の除外をハードコードはしていない。
 
 ### ダウンロードURLは固定する（追従自動化しない）
 
