@@ -32,7 +32,7 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
 
 ### 全体
 
-以下のURLで提供されているExcelファイルがデータファイルです(平成18年以降の「全生物種」)。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+以下のURLで提供されているExcelファイルがデータファイルです(令和元年度以降の「全生物種」)。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://www.nilim.go.jp/lab/fbg/ksnkankyo/mizukokuweb/system/seibutsuListfile.htm
 
@@ -60,7 +60,7 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
 
 - https://insect-web.rad.naro.go.jp/flame/tree
 
-また、以下のURLで提供されているExcelファイルがデータファイルです。Google Driveからは自動ダウンロードが難しいので、手動でダウンロードしてディレクトリ内に配置して下さい。
+また、以下のURLで提供されているExcelファイルがデータファイルです。Google Driveからは自動ダウンロードが禁止されているので、手動でダウンロードしてディレクトリ内に配置して下さい。
 
 - https://sites.google.com/view/shigainsect/
 
@@ -107,10 +107,6 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
 以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://insect-web.rad.naro.go.jp/flame/tree
-
-### ダニ類 (Acarids)
-
-- https://sites.google.com/site/catalogueofacariofjapan/
 
 ### 線形動物 (Nematodes)
 
