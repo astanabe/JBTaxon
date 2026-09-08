@@ -3,8 +3,8 @@
 # 分類群ディレクトリの中身は追跡せず、各ディレクトリの README.md だけを追跡する。
 
 # 分類群ディレクトリ内の生データファイル (fetch_data.pl の取得物・手動配置分・展開物)
-# NCBITaxonomy と WoRMS は種名チェックリストではなく学名の有効性判定に使う参照
-# データだが、生データを配布しない点は同じなので同じように扱う。
+# NCBITaxonomy は種名チェックリストではなく学名の有効性判定に使う参照データだが、
+# 生データを配布しない点は同じなので同じように扱う。
 /AllTaxa/*
 /Bryophytes/*
 /Earthworms/*
@@ -22,7 +22,6 @@
 /VascularPlants/*
 /Viruses/*
 /NCBITaxonomy/*
-/WoRMS/*
 
 # 各分類群ディレクトリの README.md は追跡する
 !/AllTaxa/README.md
@@ -42,7 +41,6 @@
 !/VascularPlants/README.md
 !/Viruses/README.md
 !/NCBITaxonomy/README.md
-!/WoRMS/README.md
 
 # Wikidataメタデータ取得クエリファイルは追跡する
 !/AllTaxa/wikidata.rq

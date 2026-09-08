@@ -4,9 +4,11 @@
 
 `generate_tables.pl` は有効名を次の順で決める。
 
-1. GBIF Backbone Taxonomy (`AllTaxa/Taxon.tsv`) の `taxonomicStatus`
+1. Catalogue of Life (`AllTaxa/NameUsage.tsv`) の `col:status`
 2. NCBI Taxonomy (`NCBITaxonomy/names.dmp`) の name class（`scientific name` なら有効名）
 3. どちらでも決められなければ、実行の最後に「注意」として報告する
+
+Catalogue of Life は WoRMS をはじめ多数のデータベースを統合しているので、この2段で足りる。
 
 ## 自動ダウンロードされるファイル
 

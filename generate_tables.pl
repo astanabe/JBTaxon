@@ -81,25 +81,30 @@ my @JAPNAME_NOTES = (
     '[NR]', '[要検討]', '[非合法名]', '[非正式名]', '[裸名]',
 );
 
-# HTML の実体参照・康熙部首・河川水辺の国勢調査の列構成の各表。
-#-----------------------------------------------------------------------------
-my %GBIF_RANK = (
-    kingdom => 'kingdom', subkingdom => 'subkingdom',
-    phylum => 'phylum', subphylum => 'subphylum',
-    class => 'class', subclass => 'subclass',
-    order => 'order', suborder => 'suborder',
-    superfamily => 'superfamily', family => 'family', subfamily => 'subfamily',
-    tribe => 'tribe', subtribe => 'subtribe',
-    genus => 'genus', subgenus => 'subgenus', section => 'section',
-    species => 'species', subspecies => 'subspecies',
-    variety => 'varietas', form => 'forma',
-    unranked => 'no rank',
+# Catalogue of Life (ColDP) の分類階級と、有効名として扱わない status。
+# 「provisionally accepted」は暫定的な有効名なので有効名として扱う。
+my %COL_RANK = (
+    'domain' => 'domain', 'realm' => 'realm', 'kingdom' => 'kingdom',
+    'subkingdom' => 'subkingdom', 'superphylum' => 'superphylum',
+    'phylum' => 'phylum', 'subphylum' => 'subphylum',
+    'superclass' => 'superclass', 'class' => 'class', 'subclass' => 'subclass',
+    'infraclass' => 'infraclass', 'cohort' => 'cohort', 'subcohort' => 'subcohort',
+    'superorder' => 'superorder', 'order' => 'order', 'suborder' => 'suborder',
+    'infraorder' => 'infraorder', 'parvorder' => 'parvorder',
+    'superfamily' => 'superfamily', 'family' => 'family', 'subfamily' => 'subfamily',
+    'tribe' => 'tribe', 'subtribe' => 'subtribe',
+    'genus' => 'genus', 'subgenus' => 'subgenus',
+    'section' => 'section', 'subsection' => 'subsection', 'series' => 'series',
+    'species group' => 'species group', 'species subgroup' => 'species subgroup',
+    'species' => 'species', 'subspecies' => 'subspecies',
+    'variety' => 'varietas', 'subvariety' => 'subvariety',
+    'form' => 'forma', 'forma specialis' => 'forma specialis',
+    'strain' => 'strain', 'morph' => 'morph',
+    'unranked' => 'no rank', 'other' => 'no rank', 'clade' => 'clade',
 );
 
-# 「doubtful」は疑わしいというだけで無効名ではないので有効名として扱う。
-my %GBIF_INVALID_STATUS = map { $_ => 1 } (
-    'synonym', 'homotypic synonym', 'heterotypic synonym',
-    'proparte synonym', 'misapplied',
+my %COL_INVALID_STATUS = map { $_ => 1 } (
+    'synonym', 'ambiguous synonym', 'misapplied', 'bare name',
 );
 
 # ファイル後方の実行ブロックより前に置かないと代入前に参照されてしまう。
@@ -189,24 +194,27 @@ my @SOURCES = (
         files => [ map { "R0${_}zenseibutsu.xlsx" } 1 .. 7 ],
         scope => 0, year => 2025,
         sourcetitle  => '河川水辺の国勢調査のための生物リスト',
-        sourceauthor => '国土交通省 国土技術政策総合研究所',
+        sourceauthor => [ '国土交通省 国土技術政策総合研究所' ],
         sourceurl    => 'https://www.nilim.go.jp/lab/fbg/ksnkankyo/mizukokuweb/system/seibutsuListfile.htm',
     },
-    {   dir => 'AllTaxa', id => 'gbif', parser => 'gbif',
-        desc  => 'GBIF Backbone Taxonomy (2023-08-28 版)',
-        files => [ 'Taxon.tsv', 'VernacularName.tsv' ],
-        unzip => [ 'backbone.zip', 'Taxon.tsv' ],
-        scope => 0, year => 2023,
-        sourcetitle  => 'GBIF Backbone Taxonomy',
-        sourceauthor => 'GBIF Secretariat',
-        sourceurl    => 'https://doi.org/10.15468/39omei',
+    {   dir => 'AllTaxa', id => 'col', parser => 'col',
+        desc  => 'Catalogue of Life (2026-08-26 XR)',
+        files => [ 'NameUsage.tsv', 'VernacularName.tsv' ],
+        # ColDP の書庫は 5.6GB・21,425 ファイルある。必要な2つだけ展開し、
+        # source/*.yaml は書庫から直接読む。
+        unzip => [ 'export.zip', 'NameUsage.tsv' ],
+        unzip_only => [ 'NameUsage.tsv', 'VernacularName.tsv' ],
+        scope => 0, year => 2026,
+        sourcetitle  => 'Catalogue of Life',
+        sourceauthor => [ 'Olaf Bánki', 'Yury Roskov', 'Markus Döring' ],
+        sourceurl    => 'https://api.checklistbank.org/dataset/316165/export.zip?extended=true&format=ColDP',
     },
     {   dir => 'AllTaxa', id => 'wikidata', parser => 'wikidata',
         desc  => 'Wikidata 学名・和名対応 (QLever で取得した CSV)',
         files => [ 'wikidata.csv' ],
         scope => 0, year => 2026,
         sourcetitle  => 'Wikidata',
-        sourceauthor => 'Wikidata contributors',
+        sourceauthor => [ 'Wikidata contributors' ],
         sourceurl    => 'https://www.wikidata.org/',
     },
     {   dir => 'Mammals', id => 'mammal_society', parser => 'mammals',
@@ -215,7 +223,7 @@ my @SOURCES = (
         unzip => [ 'list_20211223.zip', 'list_20211223/list_20211223.xlsx' ],
         scope => 8, year => 2021,
         sourcetitle  => '世界哺乳類標準和名リスト',
-        sourceauthor => '川田 伸一郎・岩佐 真宏・福井 大・新宅 勇太・天野 雅男・下稲葉 さやか・樽 創・姉崎 智子・鈴木 聡・押田 龍夫・横畑 泰志',
+        sourceauthor => [ '川田 伸一郎', '岩佐 真宏', '福井 大', '新宅 勇太', '天野 雅男', '下稲葉 さやか', '樽 創', '姉崎 智子', '鈴木 聡', '押田 龍夫', '横畑 泰志' ],
         sourceurl    => 'https://www.mammalogy.jp/list/index.html',
     },
     {   dir => 'Reptiles_Amphibians', id => 'herpetology_jp', parser => 'herpetology',
@@ -223,7 +231,7 @@ my @SOURCES = (
         files => [ 'index_j.html' ],
         scope => 8, year => 2026,
         sourcetitle  => '日本産爬虫両生類標準和名リスト',
-        sourceauthor => '日本爬虫両棲類学会',
+        sourceauthor => [ '日本爬虫両棲類学会' ],
         sourceurl    => 'https://herpetology.jp/wamei/index_j.php',
     },
     {   dir => 'Fishes', id => 'jaflist', parser => 'jaflist',
@@ -231,7 +239,7 @@ my @SOURCES = (
         files => [ '20260827_JAFList.xlsx' ],
         scope => 8, year => 2026,
         sourcetitle  => '日本産魚類全種目録',
-        sourceauthor => '本村 浩之',
+        sourceauthor => [ '本村 浩之' ],
         sourceurl    => 'https://www.museum.kagoshima-u.ac.jp/staff/motomura/jaf.html',
     },
     {   dir => 'Insects', id => 'naro_insecta', parser => 'naro',
@@ -239,7 +247,7 @@ my @SOURCES = (
         files => [ 'naro_insecta_page*.html' ],
         scope => 8, year => 2026,
         sourcetitle  => '昆虫情報データベース',
-        sourceauthor => '国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット',
+        sourceauthor => [ '国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット' ],
         sourceurl    => 'https://insect-web.rad.naro.go.jp/flame/tree',
     },
     {   dir => 'Insects', id => 'shigainsect', parser => 'shigainsect',
@@ -249,7 +257,7 @@ my @SOURCES = (
         optional => 1,
         scope => 8, year => 2025,
         sourcetitle  => '滋賀県昆虫目録2025',
-        sourceauthor => '滋賀県昆虫目録作成グループ',
+        sourceauthor => [ '滋賀県昆虫目録作成グループ' ],
         sourceurl    => 'https://sites.google.com/view/shigainsect/',
     },
     {   dir => 'Insects', id => 'listmj', parser => 'listmj',
@@ -257,7 +265,7 @@ my @SOURCES = (
         files => [ 'ListMJ3-*.xlsx' ],
         scope => 14, year => 2021,
         sourcetitle  => 'List-MJ 日本産蛾類総目録',
-        sourceauthor => '神保 宇嗣',
+        sourceauthor => [ '神保 宇嗣' ],
         sourceurl    => 'http://listmj.mothprog.com/',
     },
     {   dir => 'Insects', id => 'binran', parser => 'binran',
@@ -265,7 +273,7 @@ my @SOURCES = (
         files => [ 'binran_*.html' ],
         scope => 18, year => 2021,
         sourcetitle  => '日本産蝶類和名学名便覧',
-        sourceauthor => '猪又 敏男・植村 好延・矢後 勝也・上田 恭一郎・神保 宇嗣',
+        sourceauthor => [ '猪又 敏男', '植村 好延', '矢後 勝也', '上田 恭一郎', '神保 宇嗣' ],
         sourceurl    => 'https://web.archive.org/web/20211017231224/https://binran.lepimages.jp/',
     },
     {   dir => 'Insects', id => 'trichoptera', parser => 'trichoptera',
@@ -273,7 +281,7 @@ my @SOURCES = (
         files => [ 'trichoptera_names.html' ],
         scope => 14, year => 2026,
         sourcetitle  => '日本産トビケラの種リスト',
-        sourceauthor => '野崎 隆夫',
+        sourceauthor => [ '野崎 隆夫' ],
         sourceurl    => 'https://tobikera.eco.coocan.jp/names.htm',
     },
     {   dir => 'Insects', id => 'staphylinidae', parser => 'staphylinidae',
@@ -281,7 +289,7 @@ my @SOURCES = (
         files => [ 'staphylinidae_p069.pdf' ],
         scope => 19, year => 2013,
         sourcetitle  => '日本産ハネカクシ科総目録（昆虫綱：甲虫目）',
-        sourceauthor => '柴田 泰利・丸山 宗利・保科 英人・岸本 年郎・直海 俊一郎・野村 周平・Volker Puthz・島田 孝・渡辺 泰明・山本 周平',
+        sourceauthor => [ '柴田 泰利', '丸山 宗利', '保科 英人', '岸本 年郎', '直海 俊一郎', '野村 周平', 'Volker Puthz', '島田 孝', '渡辺 泰明', '山本 周平' ],
         sourceurl    => 'https://doi.org/10.15017/26400',
     },
     {   dir => 'Insects', id => 'aculeata', parser => 'aculeata',
@@ -289,7 +297,7 @@ my @SOURCES = (
         files => [ 'aculeata_hym_list_2016_ver5.pdf' ],
         scope => 16, year => 2016,
         sourcetitle  => '日本産有剣膜翅類目録（2016 年版）',
-        sourceauthor => '寺山 守',
+        sourceauthor => [ '寺山 守' ],
         sourceurl    => 'https://web.archive.org/web/20220324223234/https://sc888fba2c6537423.jimcontent.com/download/version/1486475674/module/12561110890/name/Hym.list.%28Japan%292016.ver5.pdf',
     },
     {   dir => 'Spiders', id => 'naro_araneae', parser => 'naro',
@@ -297,7 +305,7 @@ my @SOURCES = (
         files => [ 'naro_araneae_page*.html' ],
         scope => 14, year => 2026,
         sourcetitle  => '昆虫情報データベース',
-        sourceauthor => '国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット',
+        sourceauthor => [ '国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット' ],
         sourceurl    => 'https://insect-web.rad.naro.go.jp/flame/tree',
     },
     {   dir => 'Nematodes', id => 'naro_nematoda', parser => 'naro',
@@ -305,7 +313,7 @@ my @SOURCES = (
         files => [ 'naro_nematoda_page*.html' ],
         scope => 5, year => 2026,
         sourcetitle  => '昆虫情報データベース',
-        sourceauthor => '国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット',
+        sourceauthor => [ '国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット' ],
         sourceurl    => 'https://insect-web.rad.naro.go.jp/flame/tree',
     },
     {   dir => 'Tanaids', id => 'tanaids', parser => 'tanaids',
@@ -313,7 +321,7 @@ my @SOURCES = (
         files => [ 'jpnlist.html' ],
         scope => 14, year => 2026,
         sourcetitle  => '日本近海産タナイス類リスト',
-        sourceauthor => '角井 敬知',
+        sourceauthor => [ '角井 敬知' ],
         sourceurl    => 'https://sites.google.com/site/tnidjpn/tanaidacea/jpnlist',
     },
     {   dir => 'Earthworms', id => 'mimizu', parser => 'earthworms',
@@ -321,7 +329,7 @@ my @SOURCES = (
         files => [ 'nihonsan_mimizu_list.xlsx' ],
         scope => 14, year => 2025,
         sourcetitle  => '日本産大型陸棲ミミズの種名一覧',
-        sourceauthor => '南谷 幸雄',
+        sourceauthor => [ '南谷 幸雄' ],
         sourceurl    => 'https://japanese-mimizu.jimdofree.com/%E3%83%9F%E3%83%9F%E3%82%BA%E3%81%AE%E5%88%86%E9%A1%9E/',
     },
     {   dir => 'Isopods', id => 'warajimushi', parser => 'isopods',
@@ -329,7 +337,7 @@ my @SOURCES = (
         files => [ 'List_species.html' ],
         scope => 15, year => 2026,
         sourcetitle  => '日本産ワラジムシ亜目種リスト',
-        sourceauthor => '唐沢 重考',
+        sourceauthor => [ '唐沢 重考' ],
         sourceurl    => 'https://www.warajimushi.com/Species/List_species.html',
     },
     {   dir => 'VascularPlants', id => 'ylist', parser => 'ylist',
@@ -337,7 +345,7 @@ my @SOURCES = (
         files => [ '20210514YList_download.xlsx' ],
         scope => 6, year => 2021,
         sourcetitle  => 'YList',
-        sourceauthor => '米倉 浩司・梶田 忠',
+        sourceauthor => [ '米倉 浩司', '梶田 忠' ],
         sourceurl    => 'http://ylist.info/',
     },
     {   dir => 'VascularPlants', id => 'ferngreenlist', parser => 'ferngreenlist',
@@ -345,7 +353,7 @@ my @SOURCES = (
         files => [ 'FernGreenListV2.0.csv' ],
         scope => 8, year => 2023,
         sourcetitle  => 'FernGreenList ver. 2.0',
-        sourceauthor => 'Atsushi Ebihara, Tao Fujiwara, Masayuki Takamiya, Motomi Ito, Tetsukazu Yahara',
+        sourceauthor => [ 'Atsushi Ebihara', 'Tao Fujiwara', 'Masayuki Takamiya', 'Motomi Ito', 'Tetsukazu Yahara' ],
         sourceurl    => 'https://doi.org/10.57400/data.bnmnsbot.22696618',
     },
     {   dir => 'Bryophytes', id => 'hattoria7', parser => 'hattoria7',
@@ -353,7 +361,7 @@ my @SOURCES = (
         files => [ '7_9.pdf' ],
         scope => 5, year => 2016,
         sourcetitle  => 'A revised new catalog of the mosses of Japan',
-        sourceauthor => 'Tadashi Suzuki',
+        sourceauthor => [ 'Tadashi Suzuki' ],
         sourceurl    => 'https://doi.org/10.18968/hattoria.7.0_9',
     },
     {   dir => 'Bryophytes', id => 'hattoria9', parser => 'hattoria9',
@@ -361,7 +369,7 @@ my @SOURCES = (
         files => [ '9_53.pdf' ],
         scope => 5, year => 2018,
         sourcetitle  => '日本産タイ類・ツノゴケ類チェックリスト，2018',
-        sourceauthor => '片桐 知之・古木 達郎',
+        sourceauthor => [ '片桐 知之', '古木 達郎' ],
         sourceurl    => 'https://doi.org/10.18968/hattoria.9.0_53',
     },
     {   dir => 'Lichens', id => 'lichenjapan', parser => 'lichens',
@@ -369,7 +377,7 @@ my @SOURCES = (
         files => [ 'checklist.html' ],
         scope => 8, year => 2026,
         sourcetitle  => 'Checklist of Lichens and Allied Fungi of Japan',
-        sourceauthor => 'Lichenological Society of Japan',
+        sourceauthor => [ 'Lichenological Society of Japan' ],
         sourceurl    => 'https://lichenjapan.jp/checklist/',
     },
     {   dir => 'Lichens', id => 'lichen_systematics', parser => 'lichen_systematics',
@@ -377,7 +385,7 @@ my @SOURCES = (
         files => [ 'systematics.html' ],
         scope => 8, year => 2026,
         sourcetitle  => 'Classification of higher taxonomic groups of lichens and allied fungi in Japan',
-        sourceauthor => 'Lichenological Society of Japan',
+        sourceauthor => [ 'Lichenological Society of Japan' ],
         sourceurl    => 'https://lichenjapan.jp/systematics/',
     },
     {   dir => 'Fungi', id => 'mycology_jp', parser => 'fungi',
@@ -385,7 +393,7 @@ my @SOURCES = (
         files => [ 'DB20200311.xlsx' ],
         scope => 2, year => 2020,
         sourcetitle  => '日本産菌類チェックリスト',
-        sourceauthor => '日本菌学会 データベース委員会',
+        sourceauthor => [ '日本菌学会 データベース委員会' ],
         sourceurl    => 'https://www.mycology-jp.org/html/checklist_clist.html',
     },
     {   dir => 'Seaweeds', id => 'seaweeds', parser => 'seaweeds',
@@ -393,7 +401,7 @@ my @SOURCES = (
         files => [ 'Brown/*.html', 'Red/*.html', 'Green/*.html' ],
         scope => 4, year => 2026,
         sourcetitle  => '日本産海藻リスト',
-        sourceauthor => '鈴木 雅大',
+        sourceauthor => [ '鈴木 雅大' ],
         sourceurl    => 'https://tonysharks.com/Seaweeds_list/Seaweed_list_top.html',
     },
     {   dir => 'Viruses', id => 'jsv_virus', parser => 'jsv_virus',
@@ -401,7 +409,7 @@ my @SOURCES = (
         files => [ 'news241125.xlsx', 'news2411252.xlsx' ],
         scope => 1, year => 2024,
         sourcetitle  => 'ウイルス種名・英名・和名対応リスト',
-        sourceauthor => '日本ウイルス学会',
+        sourceauthor => [ '日本ウイルス学会' ],
         sourceurl    => 'https://jsv.umin.jp/news/news241125.html',
     },
 );
@@ -573,7 +581,7 @@ sub do_parse {
     return parse_lichens($src, $paths)       if $p eq 'lichens';
     return parse_fungi($src, $paths)         if $p eq 'fungi';
     return parse_seaweeds($src, $paths)      if $p eq 'seaweeds';
-    return parse_gbif($src, $paths)          if $p eq 'gbif';
+    return parse_col($src, $paths)           if $p eq 'col';
     return parse_wikidata($src, $paths)      if $p eq 'wikidata';
     return parse_lichen_systematics($src, $paths) if $p eq 'lichen_systematics';
     return parse_jsv_virus($src, $paths)     if $p eq 'jsv_virus';
@@ -585,11 +593,16 @@ sub do_parse {
 #
 # 内部形式は6列。この1レコードから両方の最終テーブルを導ける。
 #   japname / sciname / japvalid / scivalid / rank / subrank / nos2j
+#   sourcetitle / sourceauthor / sourceurl
 # japname か sciname が空のレコードはどちらの表にも寄与しないので落とす。
 #
 # nos2j は「有効な和名だが sciname2japname の2列目には使わない」印。
 # JAFList の「サツキマス・アマゴ」のように、分割前の和名を代表として残しつつ
 # 分割後の和名も有効名として和名→学名テーブルに載せたい場合に使う。
+#
+# 末尾の出典3列はレコード単位の上書き。空なら @SOURCES の値を使う。
+# Catalogue of Life はエントリごとに sourceID を持ち、その提供元を出典にするため
+# ここに入れる。他の情報源はすべて空。
 #-----------------------------------------------------------------------------
 sub intermediate_path {
     my ($src) = @_;
@@ -609,14 +622,16 @@ sub write_intermediate {
     my $n = 0;
     my %seen;
     for my $r (@$records) {
-        my ($jap, $sci, $jv, $sv, $rank, $subrank, $nos2j) = @$r;
+        my ($jap, $sci, $jv, $sv, $rank, $subrank, $nos2j, $st, $sa, $su) = @$r;
         next unless defined $jap && defined $sci && length $jap && length $sci;
         $rank    = 0 unless defined $rank;
         $subrank = 1 unless defined $subrank && $subrank >= 1;
         $jv = $jv ? 1 : 0;
         $sv = $sv ? 1 : 0;
         $nos2j = $nos2j ? 1 : 0;
-        my $line = join("\t", $jap, $sci, $jv, $sv, $rank, $subrank, $nos2j);
+        $_ = defined $_ ? $_ : '' for ($st, $sa, $su);
+        s/[\t\n\r]+/ /g for ($st, $sa, $su);
+        my $line = join("\t", $jap, $sci, $jv, $sv, $rank, $subrank, $nos2j, $st, $sa, $su);
         next if $seen{$line}++;
         print $fh "$line\n";
         $n++;
@@ -635,7 +650,7 @@ sub read_intermediate {
         chomp $line;
         next unless length $line;
         my @f = split /\t/, $line, -1;
-        next unless @f == 7;
+        next unless @f == 10;
         push @out, \@f;
     }
     close $fh;
@@ -692,11 +707,12 @@ sub merge_directory {
     my (%adopt_j2s, %adopt_s2j);
     for my $e (@records) {
         my ($r, $h) = @$e;
-        my ($jap, $sci, $jv, $sv, $rank, $subrank, $nos2j) = @$r;
+        my ($jap, $sci, $jv, $sv, $rank, $subrank, $nos2j, $st, $sa, $su) = @$r;
         my $jvalid = valid_of(\%validity, "j\t$jap");
         my $svalid = valid_of(\%validity, "s\t$sci");
         my $cand = { sci => $sci, jap => $jap, rank => $rank, subrank => $subrank,
-                     src => $h->{src}, order => $h->{order} };
+                     src => $h->{src}, order => $h->{order},
+                     st => $st, sa => $sa, su => $su };
         adopt(\%adopt_j2s, $jap, $cand) if $sv && $svalid;
         adopt(\%adopt_s2j, $sci, $cand) if $jv && $jvalid && !$nos2j;
     }
@@ -757,8 +773,12 @@ sub write_final {
         my $other = $kind eq 'japname2sciname' ? $c->{sci} : $c->{jap};
         my $v = $validity->{"$vprefix\t$key"};
         my $valid = $v ? $v->[0] : 1;
+        # レコード単位の出典があればそれを使う (Catalogue of Life の sourceID 由来)
+        my $title  = length $c->{st} ? $c->{st} : $c->{src}{sourcetitle};
+        my $author = length $c->{sa} ? $c->{sa} : format_authors($c->{src}{sourceauthor});
+        my $url    = length $c->{su} ? $c->{su} : $c->{src}{sourceurl};
         print $fh join("\t", $key, $other, $valid, $c->{rank}, $c->{subrank},
-                       $c->{src}{sourcetitle}, $c->{src}{sourceauthor}, $c->{src}{sourceurl}), "\n";
+                       $title, $author, $url), "\n";
         $n++;
     }
     close $fh;
@@ -797,6 +817,19 @@ sub uniq {
     return grep { !$seen{$_}++ } @_;
 }
 
+# 著者名の並びを出力用の1つの文字列にする。3名以上は2人目以降を省略し、
+# 日本語なら「ら」、英語なら「 et al.」を付ける (README の規定)。
+sub format_authors {
+    my ($authors) = @_;
+    return '' unless $authors;
+    my @a = ref $authors eq 'ARRAY' ? @$authors : ($authors);
+    @a = grep { defined && length } @a;
+    return '' unless @a;
+    my $jp = looks_japanese($a[0]);
+    return $a[0] . ($jp ? 'ら' : ' et al.') if @a >= 3;
+    return join($jp ? '・' : ', ', @a);
+}
+
 sub list_sources {
     my ($sources) = @_;
     printf "対象ディレクトリ: %s\n\n", $basedir;
@@ -807,7 +840,7 @@ sub list_sources {
             $src->{dir}, $src->{id}, $src->{scope}, $src->{year}, $src->{desc};
         printf "  入力: %s\n", join(', ', @{ $src->{files} });
         printf "  展開: %s -> %s\n", @{ $src->{unzip} } if $src->{unzip};
-        printf "  出典: %s / %s\n", $src->{sourcetitle}, $src->{sourceauthor};
+        printf "  出典: %s / %s\n", $src->{sourcetitle}, format_authors($src->{sourceauthor});
     }
     print "\n最終出力: <ディレクトリ>/japname2sciname_VERSION_BUILDDATE.tsv\n";
     print "          <ディレクトリ>/sciname2japname_VERSION_BUILDDATE.tsv\n";
@@ -979,7 +1012,7 @@ sub expand_zip {
     return unless @zips;
 
     for my $zip (@zips) {
-        my $n = eval { unzip_into($zip, $dir) };
+        my $n = eval { unzip_into($zip, $dir, $src->{unzip_only}) };
         if ($@) {
             my $why = $@; $why =~ s/\s+\z//;
             record_failure($src, "zip を展開できません: " . relname($zip) . ": $why");
@@ -992,7 +1025,8 @@ sub expand_zip {
 # IO::Uncompress::Unzip で書庫を展開する。サブディレクトリ付きのエントリに対応する
 # (哺乳類の zip は list_20211223/ を1階層挟む)。
 sub unzip_into {
-    my ($zip, $dest) = @_;
+    my ($zip, $dest, $only) = @_;
+    my %want = $only ? map { $_ => 1 } @$only : ();
     my $z = IO::Uncompress::Unzip->new($zip, MultiStream => 0)
         or die "$UnzipError\n";
     my $n = 0;
@@ -1002,6 +1036,7 @@ sub unzip_into {
         $name =~ s{\\}{/}g;
         die "書庫に不正なパスが含まれています: $name\n" if $name =~ m{(?:^|/)\.\.(?:/|$)} || $name =~ m{^/};
         next if $name =~ m{/$};
+        next if %want && !$want{$name};
         my $out = File::Spec->catfile($dest, split m{/}, $name);
         my $odir = dirname($out);
         make_path($odir) unless -d $odir;
@@ -1493,13 +1528,14 @@ sub add_pair {
     # 和名欄の末尾に学名がそのまま付いている行があるので落とす
     $_ = strip_trailing_sciname($_, $sci) for ($head, @syn);
     my $nos2j = $opt{nos2j} ? 1 : 0;
+    my @si = $opt{srcinfo} ? @{ $opt{srcinfo} } : ('', '', '');
     if (length $head && !is_placeholder($head, $sci)) {
-        push @$out, [ $head, $sci, $jv, $sv, $rank, $subrank, $nos2j ];
+        push @$out, [ $head, $sci, $jv, $sv, $rank, $subrank, $nos2j, @si ];
     }
     # 括弧内の別名は和名シノニム扱い。学名側の有効性はそのまま引き継ぐ。
     for my $s (@syn) {
         next if is_placeholder($s, $sci);
-        push @$out, [ $s, $sci, 0, $sv, $rank, $subrank, $nos2j ];
+        push @$out, [ $s, $sci, 0, $sv, $rank, $subrank, $nos2j, @si ];
     }
 }
 
@@ -1593,9 +1629,15 @@ sub parse_ferngreenlist {
 # 外部の分類データベースによる有効名の判定
 #
 # 1つの和名に2つの学名が併記されている情報源があるので、どちらが有効名かを
-# 外部データベースに問い合わせて決める。優先順位は
-#   1) GBIF Backbone Taxonomy (AllTaxa/Taxon.tsv) の taxonomicStatus
+# 外部データベースで決める。Catalogue of Life は WoRMS を含む多数のデータベースを
+# 統合しているので、これと NCBI Taxonomy の2段で足りる。優先順位は
+#   1) Catalogue of Life (AllTaxa/NameUsage.tsv) の col:status
 #   2) NCBI Taxonomy (NCBITaxonomy/names.dmp) の name class
+#
+# Catalogue of Life のスコアは 3=有効名 / 2=シノニムだがその有効名と属名が同じ
+# (＝現在の組み合わせ) / 1=登録はあるがそのどちらでもない / 0=見つからない。
+# 「ヤマドリ」の Synchiropus ijimai と Neosynchiropus ijimai はどちらも
+# Neosynchiropus ijimae のシノニムなので、属名の一致する後者が 2 になる。
 # で、どちらでも決められなければ実行末尾の「注意」で報告する。
 #
 # どちらのファイルも巨大なので、候補の属名を並べた正規表現で行を絞ってから
@@ -1604,31 +1646,52 @@ sub parse_ferngreenlist {
 sub taxonomy_scores {
     my ($names) = @_;
     my %want = map { $_ => 1 } @$names;
-    my %gbif = map { $_ => 0 } @$names;
+    my %col  = map { $_ => 0 } @$names;
     my %ncbi = map { $_ => 0 } @$names;
-    return (\%gbif, \%ncbi) unless %want;
+    return (\%col, \%ncbi) unless %want;
 
     my %genus;
     for my $n (@$names) { $genus{$1} = 1 if $n =~ /\A(\S+)/ }
     my $alt = join '|', map { quotemeta } sort keys %genus;
     my $re  = qr/(?:$alt)[ \t]/;
 
-    my $taxon = File::Spec->catfile($basedir, 'AllTaxa', 'Taxon.tsv');
-    if (-f $taxon) {
-        open my $fh, '<', $taxon or die "読めません: $taxon: $!\n";
+    my (%seen_status, %parent);
+    my $usage = File::Spec->catfile($basedir, 'AllTaxa', 'NameUsage.tsv');
+    if (-f $usage) {
+        open my $fh, '<', $usage or die "読めません: $usage: $!\n";
         binmode $fh;
         my $hdr = <$fh>;
         while (my $line = <$fh>) {
             next unless $line =~ $re;
             chomp $line;
-            my @f = split /\t/, $line, 16;
-            my $canon = Encode::decode('UTF-8', (defined $f[7] ? $f[7] : ''), Encode::FB_DEFAULT);
-            next unless exists $want{$canon};
-            my $status = defined $f[14] ? $f[14] : '';
-            my $score = $GBIF_INVALID_STATUS{$status} ? 1 : 2;
-            $gbif{$canon} = $score if $score > $gbif{$canon};
+            my @f = split /\t/, $line, 11;
+            my $name = Encode::decode('UTF-8', (defined $f[7] ? $f[7] : ''), Encode::FB_DEFAULT);
+            next unless exists $want{$name};
+            my $status = defined $f[6] ? $f[6] : '';
+            next if ($seen_status{$name} || '') eq 'accepted';
+            $seen_status{$name} = $COL_INVALID_STATUS{$status} ? 'synonym' : 'accepted';
+            $parent{$name} = defined $f[4] ? $f[4] : '';
         }
         close $fh;
+
+        # シノニムの有効名を引く。属名が一致する方が現在の組み合わせなので優先する。
+        my %needp = map { $_ => 1 } grep { length } values %parent;
+        my %pname;
+        col_scan($usage, \%needp, sub {
+            my ($id, $f) = @_;
+            $pname{$id} = Encode::decode('UTF-8', (defined $f->[7] ? $f->[7] : ''),
+                                         Encode::FB_DEFAULT);
+        }) if %needp;
+
+        for my $name (@$names) {
+            my $st = $seen_status{$name};
+            next unless defined $st;
+            if ($st eq 'accepted') { $col{$name} = 3; next }
+            my ($genus)  = $name =~ /\A(\S+)/;
+            my $pn = $pname{ $parent{$name} || '' };
+            my ($pgenus) = (defined $pn && length $pn) ? ($pn =~ /\A(\S+)/) : ();
+            $col{$name} = (defined $pgenus && defined $genus && $pgenus eq $genus) ? 2 : 1;
+        }
     }
 
     my $dmp = File::Spec->catfile($basedir, 'NCBITaxonomy', 'names.dmp');
@@ -1647,7 +1710,7 @@ sub taxonomy_scores {
         }
         close $fh;
     }
-    return (\%gbif, \%ncbi);
+    return (\%col, \%ncbi);
 }
 
 # 候補のうち有効名を1つ選ぶ。渡されたスコア表を順に見て、最上位が単独で
@@ -1718,18 +1781,7 @@ sub parse_jaflist {
         next unless @{ $r->[1] } > 1;
         $need{$_} = 1 for @{ $r->[1] };
     }
-    my ($gbif, $ncbi) = taxonomy_scores([ sort keys %need ]);
-
-    # 上の2つで決まらなかった候補だけ WoRMS に問い合わせる
-    my %unresolved;
-    for my $r (@rows) {
-        my $cands = $r->[1];
-        next unless @$cands > 1;
-        next if (choose_valid_sciname($cands, $gbif, $ncbi))[1];
-        next unless grep { !is_placeholder($_->[0], undef) } jaflist_japnames($r->[0]);
-        $unresolved{$_} = 1 for @$cands;
-    }
-    my $worms = worms_scores([ sort keys %unresolved ], $src);
+    my ($col, $ncbi) = taxonomy_scores([ sort keys %need ]);
 
     for my $r (@rows) {
         my ($jap, $cands) = @$r;
@@ -1737,7 +1789,7 @@ sub parse_jaflist {
         # 和名のない行は出力に寄与しないので、決められなくても通知しない
         @japnames = grep { !is_placeholder($_->[0], undef) } @japnames;
         next unless @japnames;
-        my ($valid, $decided) = choose_valid_sciname($cands, $gbif, $ncbi, $worms);
+        my ($valid, $decided) = choose_valid_sciname($cands, $col, $ncbi);
         note($src, sprintf('有効名を決められませんでした (%s を採用): %s',
                            $valid, join(' / ', @$cands)))
             if !$decided && @$cands > 1;
@@ -3039,25 +3091,29 @@ sub despace_japanese {
 }
 
 #-----------------------------------------------------------------------------
-# GBIF Backbone Taxonomy (Darwin Core Archive)
+# Catalogue of Life (ColDP)
 #
-# backbone.zip を展開した Taxon.tsv (約2.2GB) と VernacularName.tsv を突き合わせる。
-# 和名は VernacularName.tsv の language が ja/jpn の行にあり (27,558件)、
-# taxonID で Taxon.tsv の canonicalName / taxonRank / taxonomicStatus に結び付く。
+# export.zip から展開した NameUsage.tsv (約3GB) と VernacularName.tsv を
+# 突き合わせる。和名は VernacularName.tsv の language が jpn の行にあり (99,738件)、
+# taxonID で NameUsage.tsv の学名・階級・status に結び付く。
 #
-# Taxon.tsv は巨大なので :encoding(UTF-8) を通さずバイト列のまま行を読み、
-# 必要な taxonID の行だけを split して該当フィールドを decode する。
-# シノニムの有効名は acceptedNameUsageID の先にあるので2周する。
-
-
-sub parse_gbif {
+# NameUsage.tsv は巨大なので :encoding(UTF-8) を通さずバイト列のまま行を読み、
+# 必要な ID の行だけを split して該当フィールドを decode する。
+# シノニムの有効名は parentID の先にあるので2周する。
+#
+# エントリごとに sourceID (提供元データセット) があり、README の規定により
+# その提供元を出典として出す。提供元のメタデータは書庫の source/<ID>.yaml に
+# あるので、必要なものだけを1回のストリーム走査で読む (21,409 ファイルあるため
+# 展開はしない)。sourceID が空の行は Catalogue of Life 自体を出典にする。
+#-----------------------------------------------------------------------------
+sub parse_col {
     my ($src, $paths) = @_;
-    my ($taxon, $vern);
+    my ($usage, $vern);
     for my $p (@$paths) {
-        $taxon = $p if basename($p) eq 'Taxon.tsv';
+        $usage = $p if basename($p) eq 'NameUsage.tsv';
         $vern  = $p if basename($p) eq 'VernacularName.tsv';
     }
-    die "Taxon.tsv と VernacularName.tsv が揃っていません\n" unless $taxon && $vern;
+    die "NameUsage.tsv と VernacularName.tsv が揃っていません\n" unless $usage && $vern;
 
     my %jap;
     open my $vh, '<', $vern or die "読めません: $vern: $!\n";
@@ -3065,59 +3121,76 @@ sub parse_gbif {
     my $vhdr = <$vh>;
     while (my $line = <$vh>) {
         chomp $line;
-        my @f = split /\t/, $line, -1;
-        next unless @f >= 3;
-        next unless $f[2] eq 'ja' || $f[2] eq 'jpn';
-        push @{ $jap{ $f[0] } }, Encode::decode('UTF-8', $f[1], Encode::FB_DEFAULT);
+        my @f = split /\t/, $line, 6;
+        next unless @f >= 5;
+        next unless $f[4] eq 'jpn' || $f[4] eq 'ja';
+        push @{ $jap{ $f[0] } },
+            [ Encode::decode('UTF-8', $f[2], Encode::FB_DEFAULT), $f[1] ];
     }
     close $vh;
 
     my (%rec, %need);
-    gbif_scan($taxon, \%jap, sub {
+    col_scan($usage, \%jap, sub {
         my ($id, $f) = @_;
-        my $accepted = defined $f->[3] ? $f->[3] : '';
+        my $parent = defined $f->[4] ? $f->[4] : '';
+        my $status = defined $f->[6] ? $f->[6] : '';
         $rec{$id} = [
-            Encode::decode('UTF-8', (defined $f->[7]  ? $f->[7]  : ''), Encode::FB_DEFAULT),
-            (defined $f->[11] ? $f->[11] : ''),
-            (defined $f->[14] ? $f->[14] : ''),
-            $accepted,
+            Encode::decode('UTF-8', (defined $f->[7] ? $f->[7] : ''), Encode::FB_DEFAULT),
+            (defined $f->[9] ? $f->[9] : ''),
+            $status,
+            (defined $f->[3] ? $f->[3] : ''),
+            $parent,
         ];
-        $need{$accepted} = 1 if length $accepted && !exists $rec{$accepted};
+        $need{$parent} = 1 if length $parent && $COL_INVALID_STATUS{$status};
     });
     delete $need{$_} for keys %rec;
 
-    my %accepted_name;
+    my %accepted;
     if (%need) {
-        gbif_scan($taxon, \%need, sub {
+        col_scan($usage, \%need, sub {
             my ($id, $f) = @_;
-            $accepted_name{$id} =
+            $accepted{$id} =
                 Encode::decode('UTF-8', (defined $f->[7] ? $f->[7] : ''), Encode::FB_DEFAULT);
         });
     }
 
+    # 必要な提供元だけメタデータを読む
+    my %srcids;
+    for my $id (keys %rec) {
+        my $usrc = $rec{$id}[3];
+        $srcids{$usrc} = 1 if length $usrc;
+        for my $j (@{ $jap{$id} }) { $srcids{ $j->[1] } = 1 if length $j->[1] }
+    }
+    my $zip = File::Spec->catfile(dirname($usage), 'export.zip');
+    my $meta = col_read_sources($zip, \%srcids);
+
     my @out;
     for my $id (keys %rec) {
-        my ($canon, $grank, $status, $accid) = @{ $rec{$id} };
-        next unless length $canon;
-        my ($rank, $subrank) = exists $GBIF_RANK{$grank}
-                             ? (rk($GBIF_RANK{$grank}), 1)
-                             : rank_from_sciname(norm_sciname($canon));
-        my $valid = $GBIF_INVALID_STATUS{$status} ? 0 : 1;
-        my $acc = length $accid
-                ? (exists $accepted_name{$accid} ? $accepted_name{$accid}
-                                                 : ($rec{$accid} ? $rec{$accid}[0] : ''))
+        my ($sci, $crank, $status, $usrc, $parent) = @{ $rec{$id} };
+        next unless length $sci;
+        my ($rank, $subrank) = exists $COL_RANK{$crank}
+                             ? (rk($COL_RANK{$crank}), 1)
+                             : rank_from_sciname(norm_sciname($sci));
+        my $valid = $COL_INVALID_STATUS{$status} ? 0 : 1;
+        my $acc = (!$valid && length $parent)
+                ? (exists $accepted{$parent} ? $accepted{$parent}
+                                             : ($rec{$parent} ? $rec{$parent}[0] : ''))
                 : '';
         for my $j (@{ $jap{$id} }) {
-            add_pair(\@out, $j, $canon, $rank, $subrank, scivalid => $valid);
-            add_pair(\@out, $j, $acc, $rank, $subrank)
-                if !$valid && length $acc && $acc ne $canon;
+            my ($name, $vsrc) = @$j;
+            my $sid  = length $vsrc ? $vsrc : $usrc;
+            my $info = (length $sid && $meta->{$sid}) ? $meta->{$sid} : undef;
+            add_pair(\@out, $name, $sci, $rank, $subrank,
+                     scivalid => $valid, srcinfo => $info);
+            add_pair(\@out, $name, $acc, $rank, $subrank, srcinfo => $info)
+                if !$valid && length $acc && $acc ne $sci;
         }
     }
     return \@out;
 }
 
-# 1列目の taxonID が %$want にある行だけを split してコールバックへ渡す。
-sub gbif_scan {
+# 1列目の ID が %$want にある行だけを split してコールバックへ渡す。
+sub col_scan {
     my ($path, $want, $cb) = @_;
     open my $fh, '<', $path or die "読めません: $path: $!\n";
     binmode $fh;
@@ -3128,10 +3201,104 @@ sub gbif_scan {
         my $id = substr($line, 0, $tab);
         next unless exists $want->{$id};
         chomp $line;
-        my @f = split /\t/, $line, -1;
+        my @f = split /\t/, $line, 11;
         $cb->($id, \@f);
     }
     close $fh;
+}
+
+# 書庫の source/<ID>.yaml を1回のストリーム走査で読む。
+# 戻り値は sourceID => [sourcetitle, sourceauthor, sourceurl]。
+sub col_read_sources {
+    my ($zip, $want) = @_;
+    my %out;
+    return \%out unless -f $zip && %$want;
+    my $z = IO::Uncompress::Unzip->new($zip, MultiStream => 0) or return \%out;
+    for (my $status = 1; $status > 0; $status = $z->nextStream) {
+        my $name = $z->getHeaderInfo->{Name};
+        next unless defined $name && $name =~ m{\Asource/(\d+)\.yaml\z};
+        my $id = $1;
+        next unless $want->{$id};
+        my $buf = '';
+        my $chunk;
+        $buf .= $chunk while $z->read($chunk, 65536) > 0;
+        $out{$id} = col_parse_source_yaml(Encode::decode('UTF-8', $buf, Encode::FB_DEFAULT), $id);
+    }
+    $z->close;
+    return \%out;
+}
+
+# ColDP の source/<ID>.yaml から出典に使う3つを取り出す。
+# YAML の完全な解釈はせず、必要なキーだけを拾う。ただし title や description は
+# 複数行にわたる二重引用符付きスカラで書かれることがあるので、そこだけは畳む。
+sub col_parse_source_yaml {
+    my ($text, $id) = @_;
+    my @lines = split /\n/, $text, -1;
+    my (%scalar, %people, $block);
+    my $i = 0;
+    while ($i <= $#lines) {
+        my $line = $lines[$i];
+        if ($line =~ /\A([A-Za-z]+):\s*(.*)\z/) {
+            my ($key, $val) = ($1, $2);
+            if ($val =~ /\A"/) { ($val, $i) = col_yaml_quoted($val, \@lines, $i) }
+            $val = trim($val);
+            $scalar{$key} = $val if length $val && !exists $scalar{$key};
+            $block = (!length $val && $key =~ /\A(?:author|editor|creator|contact)\z/)
+                   ? $key : undef;
+            $i++;
+            next;
+        }
+        if (defined $block) {
+            if ($line =~ /\A\s+-\s*\z/) { push @{ $people{$block} }, {} }
+            elsif ($line =~ /\A\s+(given|family|organisation):\s*(.*)\z/) {
+                my ($what, $val) = ($1, $2);
+                $val =~ s/\A"(.*)"\z/$1/;
+                $val = trim($val);
+                push @{ $people{$block} }, {} unless @{ $people{$block} || [] };
+                $people{$block}[-1]{$what} = $val if length $val;
+            }
+            elsif ($line !~ /\A\s/) { $block = undef }
+        }
+        $i++;
+    }
+
+    my (@authors, $org);
+    for my $key ('author', 'editor', 'creator', 'contact') {
+        next unless $people{$key};
+        for my $p (@{ $people{$key} }) {
+            my $name = join ' ', grep { defined && length } ($p->{given}, $p->{family});
+            push @authors, $name if length $name;
+            $org = $p->{organisation} if !defined $org && defined $p->{organisation};
+        }
+        last if @authors;
+    }
+    # 人名が書かれていないデータベースは団体名、それも無ければ表題を著者に使う
+    @authors = ($org) if !@authors && defined $org && length $org;
+    @authors = ($scalar{title}) if !@authors && defined $scalar{title} && length $scalar{title};
+
+    my $url = defined $scalar{url} && length $scalar{url} ? $scalar{url}
+            : defined $scalar{doi} && length $scalar{doi} ? "https://doi.org/$scalar{doi}"
+            : "https://www.checklistbank.org/dataset/$id";
+    return [ (defined $scalar{title} ? $scalar{title} : ''), format_authors(\@authors), $url ];
+}
+
+# 二重引用符付きスカラを畳む。行末の「\」は改行も空白も入れない継続を表す。
+sub col_yaml_quoted {
+    my ($first, $lines, $i) = @_;
+    my $buf = $first;
+    while ($buf !~ /\A"(?:[^"\\]|\\.)*"\s*\z/ && $i < $#$lines) {
+        $i++;
+        (my $next = $lines->[$i]) =~ s/\A\s+//;
+        if   ($buf =~ s/\\\z//) { $buf .= $next }
+        else                    { $buf .= ' ' . $next }
+    }
+    $buf =~ s/\A"//;
+    $buf =~ s/"\s*\z//;
+    $buf =~ s/\\ / /g;
+    $buf =~ s/\\n/\n/g;
+    $buf =~ s/\\"/"/g;
+    $buf =~ s/\\\\/\\/g;
+    return ($buf, $i);
 }
 
 #-----------------------------------------------------------------------------
@@ -3266,114 +3433,6 @@ sub parse_jsv_virus {
             unless defined $ic_sp && defined $ic_ja;
     }
     return \@out;
-}
-
-#-----------------------------------------------------------------------------
-# WoRMS (World Register of Marine Species) への問い合わせ
-#
-# GBIF Backbone Taxonomy と NCBI Taxonomy のどちらでも有効名を決められなかった
-# ときの3段目。REST API (AphiaRecordsByName) を引く。
-#
-# ここは generate_tables.pl で唯一ネットワークにアクセスする箇所である。
-#   - 上の2段で決まった名前は問い合わせない (通常は0〜数件で済む)
-#   - 結果は WoRMS/cache.tsv に貯めて次回以降は問い合わせない
-#   - 問い合わせと問い合わせの間は5秒空ける (robots.txt の Crawl-delay: 1 より長い)
-#   - 通信できなければ判定しないだけで、処理は止めない (オフラインでも動く)
-#
-# 状態のスコアは 3=accepted / 2=有効名と属が同じ (現在の組み合わせ) /
-# 1=登録はあるが上のどちらでもない / 0=見つからない。
-# 「ヤマドリ」の Synchiropus ijimai と Neosynchiropus ijimai はどちらも
-# unaccepted だが、WoRMS の有効名が Neosynchiropus ijimae なので後者が 2 になる。
-#-----------------------------------------------------------------------------
-my $WORMS_REST   = 'https://www.marinespecies.org/rest/AphiaRecordsByName';
-my $WORMS_SLEEP  = 5;
-my $WORMS_DIR    = 'WoRMS';
-my $WORMS_CACHE  = 'cache.tsv';
-my $worms_calls  = 0;
-
-sub worms_scores {
-    my ($names, $src) = @_;
-    my %score = map { $_ => 0 } @$names;
-    return \%score unless @$names;
-
-    my $path = File::Spec->catfile($basedir, $WORMS_DIR, $WORMS_CACHE);
-    my %cache;
-    if (open my $fh, '<:encoding(UTF-8)', $path) {
-        while (my $line = <$fh>) {
-            chomp $line;
-            my @f = split /\t/, $line, -1;
-            $cache{ $f[0] } = [ $f[1], $f[2] ] if @f >= 3;
-        }
-        close $fh;
-    }
-
-    my $added = 0;
-    for my $name (@$names) {
-        next if exists $cache{$name};
-        my $rec = worms_query($name);
-        unless (defined $rec) {
-            note($src, 'WoRMS に問い合わせできませんでした: ' . $name);
-            last;
-        }
-        $cache{$name} = $rec;
-        $added++;
-    }
-    worms_write_cache($path, \%cache) if $added;
-
-    for my $name (@$names) {
-        my $rec = $cache{$name} or next;
-        my ($status, $valid) = @$rec;
-        next unless defined $status && length $status;
-        if ($status eq 'accepted') { $score{$name} = 3; next }
-        my ($genus)  = $name =~ /\A(\S+)/;
-        my ($vgenus) = (defined $valid && length $valid) ? ($valid =~ /\A(\S+)/) : ();
-        $score{$name} = (defined $vgenus && defined $genus && $vgenus eq $genus) ? 2 : 1;
-    }
-    return \%score;
-}
-
-# 1件問い合わせる。戻り値は [status, valid_name]、見つからなければ ['','']、
-# 通信できなければ undef。
-sub worms_query {
-    my ($name) = @_;
-    require JSON::PP;
-    (my $esc = $name) =~ s/([^A-Za-z0-9_.~-])/sprintf('%%%02X', ord $1)/ge;
-    my $url = "$WORMS_REST/$esc?like=false&marine_only=false";
-    sleep $WORMS_SLEEP if $worms_calls++;
-    open my $ph, '-|', 'curl',
-        '--fail', '--silent', '--show-error', '--location',
-        '--connect-timeout', '30', '--max-time', '120',
-        '--user-agent', 'JBTaxon generate_tables.pl',
-        '--', $url or return undef;
-    binmode $ph;
-    my $body = do { local $/; <$ph> };
-    my $ok = close $ph;
-    return undef unless $ok;
-    $body = '' unless defined $body;
-    return [ '', '' ] unless $body =~ /\S/;          # 204 No Content = 該当なし
-    my $recs = eval { JSON::PP->new->utf8->decode($body) };
-    return [ '', '' ] unless ref $recs eq 'ARRAY' && @$recs;
-    # 完全一致の1件目を使う。accepted があればそれを優先する。
-    my ($best) = grep { ref $_ eq 'HASH' && ($_->{status} || '') eq 'accepted' } @$recs;
-    $best = $recs->[0] unless $best;
-    return [ '', '' ] unless ref $best eq 'HASH';
-    return [ (defined $best->{status} ? $best->{status} : ''),
-             (defined $best->{valid_name} ? $best->{valid_name} : '') ];
-}
-
-sub worms_write_cache {
-    my ($path, $cache) = @_;
-    my $dir = dirname($path);
-    unless (-d $dir) {
-        make_path($dir);
-        return unless -d $dir;
-    }
-    open my $fh, '>', $path or return;
-    binmode $fh, ':encoding(UTF-8)';
-    for my $name (sort keys %$cache) {
-        print $fh join("\t", $name, @{ $cache->{$name} }), "\n";
-    }
-    close $fh;
 }
 
 #-----------------------------------------------------------------------------

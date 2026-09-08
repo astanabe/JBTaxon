@@ -27,7 +27,9 @@ my @CURL_OPTS = (
     '--silent', '--show-error',
     '--location',              # figshare・九大リポジトリのリダイレクト追従に必要
     '--connect-timeout', '30',
-    '--max-time', '300',
+    # 数GBの書庫があるので上限は長くとり、止まった転送は速度で切る
+    '--max-time', '7200',
+    '--speed-limit', '1024', '--speed-time', '120',
     '--retry', '3', '--retry-delay', '5', '--retry-connrefused',
     '--user-agent', 'JBTaxon fetch_data.pl',
 );
@@ -71,11 +73,12 @@ my @SOURCES = (
     },
     {   dir  => 'AllTaxa',
         type => 'file',
-        desc => 'GBIF Backbone Taxonomy (2023-08-28 版)',
-        # DOI 10.15468/39omei の解決先。約927MB あるので取得に時間がかかる。
-        # 展開は generate_tables.pl の仕事。
-        files => [ [ 'https://hosted-datasets.gbif.org/datasets/backbone/2023-08-28/backbone.zip',
-                     'backbone.zip' ] ],
+        desc => 'Catalogue of Life (2026-08-26 XR)',
+        # ChecklistBank の ColDP エクスポート。api.checklistbank.org は
+        # download.checklistbank.org のジョブ URL へ 302 で飛ばすので --location が要る。
+        # 大きいので取得に時間がかかる。展開は generate_tables.pl の仕事。
+        files => [ [ 'https://api.checklistbank.org/dataset/316165/export.zip?extended=true&format=ColDP',
+                     'export.zip' ] ],
     },
     {   dir   => 'AllTaxa',
         type  => 'sparql',
