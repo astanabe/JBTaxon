@@ -38,6 +38,9 @@ my $NARO_QUERY   = 'mon=1&kou=1&moku=1&ka=1&kazoku=1&zoku=1&syu=1'
                  . '&amon=1&akou=1&amoku=1&aka=1&azoku=1&asyu=1&lang=ja';
 my $BINRAN_BASE  = 'https://web.archive.org/web/20211017231224/https://binran.lepimages.jp';
 my $SEAWEED_BASE = 'https://tonysharks.com/Seaweeds_list/';
+# Wikidata は WDQS (query.wikidata.org) だと 60 秒制限で完走しないので QLever を使う。
+# クエリは AllTaxa/wikidata.rq (リポジトリで追跡している) を POST する。
+my $QLEVER_URL   = 'https://qlever.dev/api/wikidata';
 
 #-----------------------------------------------------------------------------
 # ソース定義テーブル
@@ -47,6 +50,7 @@ my $SEAWEED_BASE = 'https://tonysharks.com/Seaweeds_list/';
 #   naro    ... NARO 昆虫DB search/basic のページング
 #   binran  ... 日本産蝶類和名学名便覧 (Web Archive) の階層巡回
 #   seaweed ... 海藻リストのリンク抽出巡回
+#   sparql  ... SPARQL クエリファイルを POST して結果を保存する
 #   manual  ... 自動取得せず、未配置を案内するだけ
 #
 # Insects/ はサブディレクトリを作らずフラットに配置する。generate_tables.pl は
@@ -59,6 +63,21 @@ my @SOURCES = (
         desc => '河川水辺の国勢調査 全生物種リスト (令和元年度以降)',
         files => [ map { [ "$NILIM_BASE/R0${_}List/R0${_}zenseibutsu.xlsx",
                            "R0${_}zenseibutsu.xlsx" ] } 1 .. 7 ],
+    },
+    {   dir  => 'AllTaxa',
+        type => 'file',
+        desc => 'GBIF Backbone Taxonomy (2023-08-28 版)',
+        # DOI 10.15468/39omei の解決先。約927MB あるので取得に時間がかかる。
+        # 展開は generate_tables.pl の仕事。
+        files => [ [ 'https://hosted-datasets.gbif.org/datasets/backbone/2023-08-28/backbone.zip',
+                     'backbone.zip' ] ],
+    },
+    {   dir   => 'AllTaxa',
+        type  => 'sparql',
+        desc  => 'Wikidata 学名・和名対応 (QLever 経由)',
+        query => 'wikidata.rq',
+        out   => 'wikidata.csv',
+        url   => $QLEVER_URL,
     },
     {   dir  => 'Mammals',
         type => 'manual',
@@ -84,6 +103,14 @@ my @SOURCES = (
         category => 'BB00000004',
         prefix   => 'naro_insecta',
         count    => '365',
+    },
+    {   dir  => 'Insects',
+        type => 'manual',
+        desc => 'shigainsect (滋賀県昆虫目録)',
+        files  => [],
+        always => 1,
+        reason => 'shigainsect の目別 Excel (2025年版は28ファイル) を Insects/ に配置して下さい:',
+        urls   => [ 'https://sites.google.com/view/shigainsect/' ],
     },
     {   dir  => 'Insects',
         type => 'file',
@@ -113,14 +140,6 @@ my @SOURCES = (
         type => 'binran',
         desc => '日本産蝶類和名学名便覧 (Web Archive)',
         count => '37',
-    },
-    {   dir  => 'Insects',
-        type => 'manual',
-        desc => 'shigainsect (滋賀県昆虫目録)',
-        files  => [],
-        always => 1,
-        reason => 'shigainsect の目別 Excel (2025年版は28ファイル) を Insects/ に配置して下さい:',
-        urls   => [ 'https://sites.google.com/view/shigainsect/' ],
     },
     {   dir  => 'Spiders',
         type => 'naro',
@@ -181,6 +200,11 @@ my @SOURCES = (
         desc => '日本産地衣類チェックリスト',
         files => [ [ 'https://lichenjapan.jp/checklist/', 'checklist.html' ] ],
     },
+    {   dir  => 'Lichens',
+        type => 'file',
+        desc => '日本産地衣類・関連菌類の高次分類体系',
+        files => [ [ 'https://lichenjapan.jp/systematics/', 'systematics.html' ] ],
+    },
     {   dir  => 'Fungi',
         type => 'file',
         desc => '日本産菌類チェックリスト',
@@ -191,6 +215,13 @@ my @SOURCES = (
         type => 'seaweed',
         desc => '日本産海藻リスト',
         count => '57',
+    },
+    {   dir  => 'Viruses',
+        type => 'file',
+        desc => 'ウイルス種名・英名・和名対応リスト',
+        # 案内ページ news241125.html に貼られている2つの Excel が実データ。
+        files => [ [ 'https://jsv.umin.jp/news/news241125.xlsx',  'news241125.xlsx'  ],
+                   [ 'https://jsv.umin.jp/news/news2411252.xlsx', 'news2411252.xlsx' ] ],
     },
 );
 
@@ -266,6 +297,7 @@ for my $src (@selected) {
     elsif ($src->{type} eq 'naro')    { do_naro($src) }
     elsif ($src->{type} eq 'binran')  { do_binran($src) }
     elsif ($src->{type} eq 'seaweed') { do_seaweed($src) }
+    elsif ($src->{type} eq 'sparql')  { do_sparql($src) }
     else { die "未知の type です: $src->{type}\n" }
 }
 
@@ -278,8 +310,9 @@ exit($n_fail ? 1 : 0);
 # ダウンロード (5秒間隔の担保をここに集約する)
 #-----------------------------------------------------------------------------
 sub fetch {
-    my ($url, $path) = @_;
+    my ($url, $path, %opt) = @_;
     my $rel = relname($path);
+    my @extra = @{ $opt{extra} || [] };
 
     # 既存ファイルはスキップする。ネットワークアクセスが発生しないので
     # sleep もしない (中断後の再開が数秒で済む)。
@@ -302,7 +335,7 @@ sub fetch {
     my $tmp = "$path.part";
     unlink $tmp if -e $tmp;
     $current_tmp = $tmp;
-    my $rc = system('curl', @CURL_OPTS, '-o', $tmp, '--', $url);
+    my $rc = system('curl', @CURL_OPTS, @extra, '-o', $tmp, '--', $url);
     $current_tmp = undef;
 
     if ($rc == 0 && -s $tmp) {
@@ -512,6 +545,29 @@ sub do_seaweed {
 }
 
 #-----------------------------------------------------------------------------
+# type: sparql (SPARQL クエリファイルを POST して結果を保存する)
+#
+# クエリファイルはリポジトリで追跡しているのでダウンロードしない。
+# curl の呼び出しは fetch() に集約する規則を守るため、追加のオプションは
+# extra で渡す。Accept: text/csv でないと "大腸菌"@ja のような RDF 項形式で返る。
+#-----------------------------------------------------------------------------
+sub do_sparql {
+    my ($src) = @_;
+    my $dir   = File::Spec->catdir($basedir, $src->{dir});
+    my $query = File::Spec->catfile($dir, $src->{query});
+    unless (-f $query) {
+        record_failure($src->{url}, relname($query), 'クエリファイルがありません');
+        return;
+    }
+    fetch($src->{url}, File::Spec->catfile($dir, $src->{out}), extra => [
+        '--request', 'POST',
+        '--header', 'Content-Type: application/sparql-query',
+        '--header', 'Accept: text/csv',
+        '--data-binary', "\@$query",
+    ]);
+}
+
+#-----------------------------------------------------------------------------
 # type: manual (取得せず案内のみ)
 #-----------------------------------------------------------------------------
 sub report_manual {
@@ -570,6 +626,7 @@ sub list_sources {
     for my $src (@$sources) {
         my $count = $src->{type} eq 'file'   ? scalar @{ $src->{files} }
                   : $src->{type} eq 'manual' ? '0'
+                  : $src->{type} eq 'sparql' ? '1'
                   :                            ($src->{count} || '?');
         printf "%-20s %-8s %-8s %s\n", $src->{dir}, $src->{type}, $count, $src->{desc};
         if ($src->{type} eq 'file') {
@@ -588,6 +645,9 @@ sub list_sources {
         }
         elsif ($src->{type} eq 'seaweed') {
             printf "  Brown|Red|Green|Numbers/*.html <- %s\n", $SEAWEED_BASE;
+        }
+        elsif ($src->{type} eq 'sparql') {
+            printf "  %s <- %s (POST %s)\n", $src->{out}, $src->{url}, $src->{query};
         }
     }
 }

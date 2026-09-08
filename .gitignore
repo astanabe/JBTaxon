@@ -18,6 +18,7 @@
 /Spiders/*
 /Tanaids/*
 /VascularPlants/*
+/Viruses/*
 
 # 各分類群ディレクトリの README.md は追跡する
 !/AllTaxa/README.md
@@ -35,6 +36,7 @@
 !/Spiders/README.md
 !/Tanaids/README.md
 !/VascularPlants/README.md
+!/Viruses/README.md
 
 # Wikidataメタデータ取得クエリファイルは追跡する
 !/AllTaxa/wikidata.rq

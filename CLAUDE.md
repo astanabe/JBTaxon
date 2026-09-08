@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## リポジトリの現状
 
-現時点でこのリポジトリに存在するのは `README.md`・`rank.def`・`yomi.tsv`・`VERSION`・`.gitignore`、実装済みの `fetch_data.pl` と `generate_tables.pl`、および分類群ごとのディレクトリに置いた `README.md` 15件。残る2スクリプト (`generate_database.pl` / `generate_dictionary.pl`) は**まだ実装されていない**。README.md は実装すべき仕様書として読むこと。ビルド・lint・テストの仕組みは未整備で、検証は `perl -c` と各スクリプトの `--list` / `--dry-run`、および実データでの実行と件数突き合わせで行っている。
+現時点でこのリポジトリに存在するのは `README.md`・`rank.def`・`yomi.tsv`・`VERSION`・`.gitignore`・`AllTaxa/wikidata.rq`、実装済みの `fetch_data.pl` と `generate_tables.pl`、および分類群ごとのディレクトリに置いた `README.md` 16件。残る3スクリプト (`generate_database.pl` / `generate_dictionary.pl` / `add_to_yomi.pl`) は**まだ実装されていない**。README.md は実装すべき仕様書として読むこと。ビルド・lint・テストの仕組みは未整備で、検証は `perl -c` と各スクリプトの `--list` / `--dry-run`、および実データでの実行と件数突き合わせで行っている。
 
 `VERSION` はリポジトリルートの1行のバージョン文字列。`generate_tables.pl` 以降の生成物のファイル名に `_VERSION_BUILDDATE` として入る（BUILDDATE は実行日の `YYYYMMDD`）。
 
@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 情報源となる生物種名チェックリストの一部は改変・再配布が禁止されている。そのため **JBTaxon の成果物（DB や辞書ファイル）自体をリポジトリで配布することはできない**。配布するのは「各ユーザーがローカルで成果物を生成するためのスクリプト」だけ。生データや生成物をリポジトリにコミットする変更は、この制約に抵触するため行わないこと。
 
-`.gitignore` がこれを機械的に担保している。分類群ディレクトリの中身（`/AllTaxa/*` など15件）、`*.part`、生成物（`/jbtaxon_*.sqlite3`・`/yomi2japname.tsv`・`/yomi2sciname.tsv`）を除外し、`!/<分類群>/README.md` で各ディレクトリの `README.md` だけを追跡する。**パターンは必ず `/<分類群>/*` の形で書くこと**（`/AllTaxa/` のようにディレクトリ自体を除外すると git が中に降りなくなり、`README.md` を再包含できない）。新しい分類群ディレクトリを追加したときは、除外と再包含の2組を両方追加する。生データを置いた状態でも `git add -A` で入るのはスクリプトと `README.md` だけになる。
+`.gitignore` がこれを機械的に担保している。分類群ディレクトリの中身（`/AllTaxa/*` など16件）、`*.part`、生成物（`/jbtaxon_*.sqlite3`・`/yomi2japname_*.tsv`・`/yomi2sciname_*.tsv`）を除外し、`!/<分類群>/README.md` で各ディレクトリの `README.md` だけを追跡する。**例外は `!/AllTaxa/wikidata.rq`**（生データではなく Wikidata 取得用の SPARQL クエリなので追跡する）。**パターンは必ず `/<分類群>/*` の形で書くこと**（`/AllTaxa/` のようにディレクトリ自体を除外すると git が中に降りなくなり、`README.md` を再包含できない）。新しい分類群ディレクトリを追加したときは、除外と再包含の2組を両方追加する。生データを置いた状態でも `git add -A` で入るのはスクリプトと `README.md` だけになる。
 
 ## パイプライン構造
 
@@ -29,7 +29,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### ディレクトリ構成
 
-分類群ごとに1ディレクトリ（README の見出しの括弧内が英語ディレクトリ名: `Mammals`, `Reptiles_Amphibians`, `Fishes`, `Insects`, `Spiders`, `Nematodes`, `Tanaids`, `Earthworms`, `Isopods`, `VascularPlants`, `Bryophytes`, `Lichens`, `Fungi`, `Seaweeds` と全生物種を対象とする「全体」）。「全体」のディレクトリ名は **`AllTaxa`** とすることが決定済み。ステップ1・2はディレクトリ単位で完結し、ステップ3・4で横断的に統合される。
+分類群ごとに1ディレクトリ（README の見出しの括弧内が英語ディレクトリ名: `Mammals`, `Reptiles_Amphibians`, `Fishes`, `Insects`, `Spiders`, `Nematodes`, `Tanaids`, `Earthworms`, `Isopods`, `VascularPlants`, `Bryophytes`, `Lichens`, `Fungi`, `Seaweeds`, `Viruses` と全生物種を対象とする「全体」）。「全体」のディレクトリ名は **`AllTaxa`** とすることが決定済み。ステップ1・2はディレクトリ単位で完結し、ステップ3・4で横断的に統合される。
 
 `Insects` はサブディレクトリを作らず**フラットに配置する**。NARO・List-MJ・ハネカクシ・有剣膜翅類・トビケラ・蝶類便覧・shigainsect が同一ディレクトリに同居するため、**`fetch_data.pl` が付けるファイル名がそのままソース識別子を兼ねる契約**になっている（`naro_insecta_pageNNN.html` / `ListMJ3-*.xlsx` / `staphylinidae_p069.pdf` / `aculeata_hym_list_2016_ver5.pdf` / `trichoptera_names.html` / `binran_*.html`）。`generate_tables.pl` はこのファイル名でパーサを振り分けるので、命名を安易に変えないこと。
 
@@ -70,7 +70,8 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 - `.part` に落として成功時のみ `rename` する。中断で切り詰められたファイルが残り、スキップ判定で「取得済み」と誤認される事故を防ぐため。スキップ方式を採る以上これは必須。
 - 巡回系（NARO・蝶類便覧・海藻）は、**レスポンスではなくディスク上のファイルを読んで**次に辿る URL を決める。再開時にスキップされたページの内容はレスポンスとして手元に来ないため。
 - 失敗しても即座に中断せず最後まで走り切り、失敗一覧を末尾に再掲する（約510件・45分の処理で1件の失敗のために全体をやり直すのは非現実的なため）。ダウンロード失敗が1件でもあれば exit 1、手動未配置は警告のみで exit 0。
-- ソース定義は `@SOURCES` の1テーブルに宣言的にまとめてある。URL 固定方針の保守がこのテーブルの編集だけで完結するのが狙い。`type` は `file` / `naro` / `binran` / `seaweed` / `manual` の5種。
+- ソース定義は `@SOURCES` の1テーブルに宣言的にまとめてある。URL 固定方針の保守がこのテーブルの編集だけで完結するのが狙い。`type` は `file` / `naro` / `binran` / `seaweed` / `sparql` / `manual` の6種。
+- `sparql` は `AllTaxa/wikidata.rq` を QLever (`https://qlever.dev/api/wikidata`) へ POST して CSV を受け取る種別。**追加の curl オプションは `fetch()` の `extra` 引数で渡す**（`fetch()` 以外で curl を呼ばない規則を守るため）。`Accept: text/csv` を付けないと `"大腸菌"@ja` のような RDF 項形式で返る。WDQS (query.wikidata.org) は60秒制限で完走しない。
 - CLI: `--dir` / `--only`（複数指定可）/ `--force` / `--list` / `--dry-run` / `--help`。`--list` と `--dry-run` は通信しない。
 - `manual` 種別は一切ダウンロードせず、期待パスの存在を確認して未配置のものを実行末尾にまとめて案内する。
 - 全件取得は約510ダウンロード・約45分。実測は 44分46秒（取得491 / スキップ17）。
@@ -78,7 +79,7 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 
 ### generate_tables.pl の実装契約
 
-実装済み。実行は約2分・ピーク RSS 約220MB（全23ソース・508ファイル、中間レコード約13万件、最終出力 約23.5万行）。以下は変更してはならない約束事：
+実装済み。実行は約2分10秒・ピーク RSS 約335MB（全27ソース、中間レコード約22.7万件、最終出力 約33.6万行）。以下は変更してはならない約束事：
 
 - **非コアモジュールを使う。** `HTML::TreeBuilder` / `HTML::TableExtract` / `Text::CSV` の3つと、外部コマンド `pdftotext` (poppler-utils + poppler-data)。起動時に `check_dependencies()` が不足を検出し、apt / cpanm の案内を出して exit 2 する。これ以上増やさないこと。
 - **xlsx は自前のストリーミングリーダで読む** (`read_xlsx`)。`Spreadsheet::ParseXLSX` は使わない。`xl/sharedStrings.xml` と該当シートの XML を `IO::Uncompress::Unzip`（コア）で直接読み、行単位でコールバックへ渡す。ルビ (`<rPh>`) の除去・`inlineStr`・結合セルの繰り下ろしに対応し、**`<dimension>` は信用しない**（R06 は 1048576 行と書いてある）。zip の展開も `IO::Uncompress::Unzip`。
@@ -110,6 +111,10 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 - **`Mammals` は世界哺乳類標準和名リスト**（日本産ではない）。zip を自動展開し、PDF ではなく xlsx を使う。ヘッダ2行・データは3行目から・5,526行目以降の付録ブロック（1,288行）は除外。
 - **`Hattoria 9 (9_53.pdf)` の §5 注釈からはシノニムを取らない。** 注釈は日本語の散文で、機械的に切り出すと誤った名前の対応を作る。本体は有効名のみなので `scivalid` は常に 1。
 - **`Seaweeds/Red/Erythropeltidales.html` は情報源側の 404 で存在しない。** 入力ファイルの欠損を許容すること。
+- **GBIF** — `backbone.zip` を展開した `Taxon.tsv`（約2.2GB）と `VernacularName.tsv` を突き合わせる。巨大なので **`:encoding(UTF-8)` を通さずバイト列で行を読み、1列目の taxonID が必要な集合にある行だけ split して該当フィールドを decode する**。シノニムの有効名は `acceptedNameUsageID` の先にあるので Taxon.tsv を2周する。`language` が `ja` の和名 27,558件のうち約6,800件は「Tenjikuzame」のようなローマ字表記で、`is_placeholder` が日本語文字を含まない名前として落とす（これは意図した挙動）。
+- **Wikidata** — `ranks_ja`（種・属・科…）から rank を決め、`aliases`（skos:altLabel）と `commons`（P1843）を和名シノニムとして出す。有効名／シノニムの情報を持たないので学名は常に有効名。
+- **ウイルス** — ICTV の Species 欄には著者名が付かないので **`add_pair` の `rawsci` オプションで学名をそのまま使う**。`norm_sciname` の「名前らしいトークンだけ採る」規則は `Alfamovirus AMV` や `Duamitovirus crpa1` の種小名を切り落としてしまう。和名の列名は2ファイルで違う（`ウイルス和名` と `和名`）のでヘッダから決める。
+- **地衣類の高次分類群 (`systematics.html`)** — 罫線文字による木構造。字下げは使わず和名の接尾辞で rank を決める。`(Syn.: …)` や `（“…”の和名は却下）` は注記であって和名の別名ではないので、括弧ごと落としてから切り分ける。門などが総大文字で書かれている行があるので `ucfirst(lc)` で直す。
 
 ### ダウンロードURLは固定する（追従自動化しない）
 
@@ -220,10 +225,10 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 
 ### 分類群別テーブル（ステップ2の出力）
 
-- `<分類群>/japname2sciname_VERSION_BUILDDATE.tsv` — `japname / sciname / japvalid / rank / subrank / source / sourceauthor / sourceurl`。和名シノニムがある場合、同一 sciname に対し japname が異なる行が複数生じる。sciname 側にシノニムは使わない。
-- `<分類群>/sciname2japname_VERSION_BUILDDATE.tsv` — `sciname / japname / scivalid / rank / subrank / source / sourceauthor / sourceurl`。学名シノニムがある場合、同一 japname に対し sciname が異なる行が複数生じる。japname 側にシノニムは使わない。
+- `<分類群>/japname2sciname_VERSION_BUILDDATE.tsv` — `japname / sciname / japvalid / rank / subrank / sourcetitle / sourceauthor / sourceurl`。和名シノニムがある場合、同一 sciname に対し japname が異なる行が複数生じる。sciname 側にシノニムは使わない。
+- `<分類群>/sciname2japname_VERSION_BUILDDATE.tsv` — `sciname / japname / scivalid / rank / subrank / sourcetitle / sourceauthor / sourceurl`。学名シノニムがある場合、同一 japname に対し sciname が異なる行が複数生じる。japname 側にシノニムは使わない。
 
-`japvalid` / `scivalid` は1列目の名前が有効名かどうかのフラグ（0 = invalid, 1 = valid）で、シノニムなら 0。**2列目の名前側にはシノニムが現れない設計なので、このフラグは常に1列目に対応する**。位置は rank/subrank の手前（3列目）。`source` / `sourceauthor` / `sourceurl` は採用したソースのもので、**ライセンス上は出典明記が不要なソース（CC0 など）も含め全ソースで3列とも必ず埋める**。出典明記が求められる情報源（魚類・YList・地衣類・蝶類便覧・哺乳類）の要求もこれで満たされる。値は `generate_tables.pl` の `@SOURCES` が唯一の持ち場で、原典やページに著者の記載があればその表記に従い、記載がなければ発行主体（学会・機関）を書く。
+`japvalid` / `scivalid` は1列目の名前が有効名かどうかのフラグ（0 = invalid, 1 = valid）で、シノニムなら 0。**2列目の名前側にはシノニムが現れない設計なので、このフラグは常に1列目に対応する**。位置は rank/subrank の手前（3列目）。`sourcetitle` / `sourceauthor` / `sourceurl` は採用したソースのもので、**ライセンス上は出典明記が不要なソース（CC0 など）も含め全ソースで3列とも必ず埋める**。出典明記が求められる情報源（魚類・YList・地衣類・蝶類便覧・哺乳類）の要求もこれで満たされる。値は `generate_tables.pl` の `@SOURCES` が唯一の持ち場で、原典やページに著者の記載があればその表記に従い、記載がなければ発行主体（学会・機関）を書く。
 
 **1列目はテーブル内で一意**（衝突解決で1つに絞られる）。
 

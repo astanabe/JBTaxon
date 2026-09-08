@@ -156,7 +156,7 @@ my @ALLTAXA_LEVELS = (
 #                  大きいほど狭い。名前の採用順位に使う
 # year         ... ソースの版の年。有効名／シノニムの判定に使う。
 #                  版が明示されているものはその年、継続更新のサイトは取得年
-# source / sourceauthor / sourceurl ... 最終 TSV の6〜8列目にそのまま出る。
+# sourcetitle / sourceauthor / sourceurl ... 最終 TSV の6〜8列目にそのまま出る。
 #                  ライセンス上は出典明記が不要なソース (CC0 など) も含め、
 #                  **全ソースで3列とも必ず埋める**。原典やページに著者の記載が
 #                  あればその表記に従い、記載がなければ発行主体 (学会・機関) を書く。
@@ -165,149 +165,166 @@ my @ALLTAXA_LEVELS = (
 #-----------------------------------------------------------------------------
 my @SOURCES = (
     {   dir => 'AllTaxa', id => 'ksn_zenseibutsu', parser => 'alltaxa',
-        desc  => '河川水辺の国勢調査 全生物種リスト (R01〜R07)',
+        desc  => '河川水辺の国勢調査のための生物リスト (R01〜R07)',
         files => [ map { "R0${_}zenseibutsu.xlsx" } 1 .. 7 ],
         scope => 0, year => 2025,
-        source       => '河川水辺の国勢調査 生物リスト 全生物種',
+        sourcetitle  => '河川水辺の国勢調査のための生物リスト',
         sourceauthor => '国土交通省 国土技術政策総合研究所',
         sourceurl    => 'https://www.nilim.go.jp/lab/fbg/ksnkankyo/mizukokuweb/system/seibutsuListfile.htm',
     },
+    {   dir => 'AllTaxa', id => 'gbif', parser => 'gbif',
+        desc  => 'GBIF Backbone Taxonomy (2023-08-28 版)',
+        files => [ 'Taxon.tsv', 'VernacularName.tsv' ],
+        unzip => [ 'backbone.zip', 'Taxon.tsv' ],
+        scope => 0, year => 2023,
+        sourcetitle  => 'GBIF Backbone Taxonomy',
+        sourceauthor => 'GBIF Secretariat',
+        sourceurl    => 'https://doi.org/10.15468/39omei',
+    },
+    {   dir => 'AllTaxa', id => 'wikidata', parser => 'wikidata',
+        desc  => 'Wikidata 学名・和名対応 (QLever で取得した CSV)',
+        files => [ 'wikidata.csv' ],
+        scope => 0, year => 2026,
+        sourcetitle  => 'Wikidata',
+        sourceauthor => 'Wikidata contributors',
+        sourceurl    => 'https://www.wikidata.org/',
+    },
     {   dir => 'Mammals', id => 'mammal_society', parser => 'mammals',
-        desc  => '世界哺乳類標準和名リスト2021年度版',
+        desc  => '世界哺乳類標準和名リスト (2021年度版)',
         files => [ 'list_20211223/list_20211223.xlsx' ],
         unzip => [ 'list_20211223.zip', 'list_20211223/list_20211223.xlsx' ],
         scope => 8, year => 2021,
-        source       => '世界哺乳類標準和名リスト2021年度版',
-        sourceauthor => '日本哺乳類学会',
+        sourcetitle  => '世界哺乳類標準和名リスト',
+        sourceauthor => '川田 伸一郎・岩佐 真宏・福井 大・新宅 勇太・天野 雅男・下稲葉 さやか・樽 創・姉崎 智子・鈴木 聡・押田 龍夫・横畑 泰志',
         sourceurl    => 'https://www.mammalogy.jp/list/index.html',
     },
     {   dir => 'Reptiles_Amphibians', id => 'herpetology_jp', parser => 'herpetology',
         desc  => '日本産爬虫両生類標準和名リスト',
         files => [ 'index_j.html' ],
         scope => 8, year => 2026,
-        source       => '日本産爬虫両生類標準和名リスト',
-        sourceauthor => '日本爬虫両棲類学会 標準和名委員会',
+        sourcetitle  => '日本産爬虫両生類標準和名リスト',
+        sourceauthor => '日本爬虫両棲類学会',
         sourceurl    => 'https://herpetology.jp/wamei/index_j.php',
     },
     {   dir => 'Fishes', id => 'jaflist', parser => 'jaflist',
         desc  => '日本産魚類全種目録 (JAF List)',
         files => [ '20260827_JAFList.xlsx' ],
         scope => 8, year => 2026,
-        source       => '日本産魚類全種目録 (JAF List)',
-        sourceauthor => '本村浩之 (鹿児島大学総合研究博物館)',
+        sourcetitle  => '日本産魚類全種目録',
+        sourceauthor => '本村 浩之',
         sourceurl    => 'https://www.museum.kagoshima-u.ac.jp/staff/motomura/jaf.html',
     },
     {   dir => 'Insects', id => 'naro_insecta', parser => 'naro',
-        desc  => 'NARO 昆虫インベントリーDB (Insecta)',
+        desc  => '昆虫情報データベース (Insecta)',
         files => [ 'naro_insecta_page*.html' ],
         scope => 8, year => 2026,
-        source       => '昆虫インベントリーデータベース',
-        sourceauthor => '農業・食品産業技術総合研究機構',
+        sourcetitle  => '昆虫情報データベース',
+        sourceauthor => '国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット',
         sourceurl    => 'https://insect-web.rad.naro.go.jp/flame/tree',
+    },
+    {   dir => 'Insects', id => 'shigainsect', parser => 'shigainsect',
+        desc  => '滋賀県昆虫目録2025 (目別 Excel)',
+        files => [ '*目*.xlsx' ],
+        unzip => [ '*.zip', '*目*.xlsx' ],
+        optional => 1,
+        scope => 8, year => 2025,
+        sourcetitle  => '滋賀県昆虫目録2025',
+        sourceauthor => '滋賀県昆虫目録作成グループ',
+        sourceurl    => 'https://sites.google.com/view/shigainsect/',
     },
     {   dir => 'Insects', id => 'listmj', parser => 'listmj',
         desc  => 'List-MJ 日本産蛾類総目録',
         files => [ 'ListMJ3-*.xlsx' ],
         scope => 14, year => 2021,
-        source       => 'List-MJ 日本産蛾類総目録',
-        sourceauthor => '神保宇嗣',
+        sourcetitle  => 'List-MJ 日本産蛾類総目録',
+        sourceauthor => '神保 宇嗣',
         sourceurl    => 'http://listmj.mothprog.com/',
+    },
+    {   dir => 'Insects', id => 'binran', parser => 'binran',
+        desc  => '日本産蝶類和名学名便覧',
+        files => [ 'binran_*.html' ],
+        scope => 18, year => 2021,
+        sourcetitle  => '日本産蝶類和名学名便覧',
+        sourceauthor => '猪又 敏男・植村 好延・矢後 勝也・上田 恭一郎・神保 宇嗣',
+        sourceurl    => 'https://web.archive.org/web/20211017231224/https://binran.lepimages.jp/',
+    },
+    {   dir => 'Insects', id => 'trichoptera', parser => 'trichoptera',
+        desc  => '日本産トビケラの種リスト',
+        files => [ 'trichoptera_names.html' ],
+        scope => 14, year => 2026,
+        sourcetitle  => '日本産トビケラの種リスト',
+        sourceauthor => '野崎 隆夫',
+        sourceurl    => 'https://tobikera.eco.coocan.jp/names.htm',
     },
     {   dir => 'Insects', id => 'staphylinidae', parser => 'staphylinidae',
         desc  => '日本産ハネカクシ科総目録',
         files => [ 'staphylinidae_p069.pdf' ],
         scope => 19, year => 2013,
-        source       => '日本産ハネカクシ科総目録 (昆虫綱：甲虫目)',
-        sourceauthor => '柴田泰利・丸山宗利・保科英人・岸本年郎・直海俊一郎・野村周平・Volker Puthz・島田孝・渡辺泰明・山本周平',
+        sourcetitle  => '日本産ハネカクシ科総目録（昆虫綱：甲虫目）',
+        sourceauthor => '柴田 泰利・丸山 宗利・保科 英人・岸本 年郎・直海 俊一郎・野村 周平・Volker Puthz・島田 孝・渡辺 泰明・山本 周平',
         sourceurl    => 'https://doi.org/10.15017/26400',
     },
     {   dir => 'Insects', id => 'aculeata', parser => 'aculeata',
         desc  => '日本産有剣膜翅類目録 (2016年版)',
         files => [ 'aculeata_hym_list_2016_ver5.pdf' ],
         scope => 16, year => 2016,
-        source       => '日本産有剣膜翅類目録 (2016年版)',
-        sourceauthor => '寺山守',
+        sourcetitle  => '日本産有剣膜翅類目録（2016 年版）',
+        sourceauthor => '寺山 守',
         sourceurl    => 'https://web.archive.org/web/20220324223234/https://sc888fba2c6537423.jimcontent.com/download/version/1486475674/module/12561110890/name/Hym.list.%28Japan%292016.ver5.pdf',
     },
-    {   dir => 'Insects', id => 'trichoptera', parser => 'trichoptera',
-        desc  => '日本産トビケラの種リスト',
-        files => [ 'trichoptera_names.html' ],
-        scope => 14, year => 2026,
-        source       => '日本産トビケラの種リスト',
-        sourceauthor => '野崎隆夫',
-        sourceurl    => 'https://tobikera.eco.coocan.jp/names.htm',
-    },
-    {   dir => 'Insects', id => 'binran', parser => 'binran',
-        desc  => '日本産蝶類和名学名便覧',
-        files => [ 'binran_*.html' ],
-        scope => 18, year => 2021,
-        source       => '日本産蝶類和名学名便覧',
-        sourceauthor => '猪又敏男・植村好延・矢後勝也・上田恭一郎・神保宇嗣',
-        sourceurl    => 'https://binran.lepimages.jp/',
-    },
-    {   dir => 'Insects', id => 'shigainsect', parser => 'shigainsect',
-        desc  => 'shigainsect 滋賀県昆虫目録2025 (目別 Excel)',
-        files => [ '*目*.xlsx' ],
-        unzip => [ '*.zip', '*目*.xlsx' ],
-        optional => 1,
-        scope => 8, year => 2025,
-        source       => '滋賀県昆虫目録2025',
-        sourceauthor => '滋賀県昆虫目録作成グループ',
-        sourceurl    => 'https://sites.google.com/view/shigainsect/',
-    },
     {   dir => 'Spiders', id => 'naro_araneae', parser => 'naro',
-        desc  => 'NARO 昆虫インベントリーDB (Araneae)',
+        desc  => '昆虫情報データベース (Araneae)',
         files => [ 'naro_araneae_page*.html' ],
         scope => 14, year => 2026,
-        source       => '昆虫インベントリーデータベース',
-        sourceauthor => '農業・食品産業技術総合研究機構',
+        sourcetitle  => '昆虫情報データベース',
+        sourceauthor => '国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット',
         sourceurl    => 'https://insect-web.rad.naro.go.jp/flame/tree',
     },
     {   dir => 'Nematodes', id => 'naro_nematoda', parser => 'naro',
-        desc  => 'NARO 昆虫インベントリーDB (Nematoda)',
+        desc  => '昆虫情報データベース (Nematoda)',
         files => [ 'naro_nematoda_page*.html' ],
         scope => 5, year => 2026,
-        source       => '昆虫インベントリーデータベース',
-        sourceauthor => '農業・食品産業技術総合研究機構',
+        sourcetitle  => '昆虫情報データベース',
+        sourceauthor => '国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット',
         sourceurl    => 'https://insect-web.rad.naro.go.jp/flame/tree',
     },
     {   dir => 'Tanaids', id => 'tanaids', parser => 'tanaids',
         desc  => '日本近海産タナイス類リスト',
         files => [ 'jpnlist.html' ],
         scope => 14, year => 2026,
-        source       => '日本近海産タナイス類リスト',
-        sourceauthor => '角井敬知',
+        sourcetitle  => '日本近海産タナイス類リスト',
+        sourceauthor => '角井 敬知',
         sourceurl    => 'https://sites.google.com/site/tnidjpn/tanaidacea/jpnlist',
     },
     {   dir => 'Earthworms', id => 'mimizu', parser => 'earthworms',
-        desc  => '日本産ミミズのリスト',
+        desc  => '日本産大型陸棲ミミズの種名一覧',
         files => [ 'nihonsan_mimizu_list.xlsx' ],
         scope => 14, year => 2025,
-        source       => '日本産ミミズのリスト',
-        sourceauthor => '南谷幸雄',
+        sourcetitle  => '日本産大型陸棲ミミズの種名一覧',
+        sourceauthor => '南谷 幸雄',
         sourceurl    => 'https://japanese-mimizu.jimdofree.com/%E3%83%9F%E3%83%9F%E3%82%BA%E3%81%AE%E5%88%86%E9%A1%9E/',
     },
     {   dir => 'Isopods', id => 'warajimushi', parser => 'isopods',
-        desc  => '日本産ワラジムシ亜目種名リスト',
+        desc  => '日本産ワラジムシ亜目種リスト',
         files => [ 'List_species.html' ],
         scope => 15, year => 2026,
-        source       => '日本産ワラジムシ亜目種名リスト',
-        sourceauthor => '唐沢重考 (鳥取大学農学部)',
+        sourcetitle  => '日本産ワラジムシ亜目種リスト',
+        sourceauthor => '唐沢 重考',
         sourceurl    => 'https://www.warajimushi.com/Species/List_species.html',
     },
     {   dir => 'VascularPlants', id => 'ylist', parser => 'ylist',
         desc  => 'YList 植物和名-学名インデックス',
         files => [ '20210514YList_download.xlsx' ],
         scope => 6, year => 2021,
-        source       => 'YList 植物和名−学名インデックス',
-        sourceauthor => '米倉浩司・梶田忠',
+        sourcetitle  => 'YList',
+        sourceauthor => '米倉 浩司・梶田 忠',
         sourceurl    => 'http://ylist.info/',
     },
     {   dir => 'VascularPlants', id => 'ferngreenlist', parser => 'ferngreenlist',
-        desc  => 'FernGreenList ver 2.0',
+        desc  => 'FernGreenList ver. 2.0',
         files => [ 'FernGreenListV2.0.csv' ],
         scope => 8, year => 2023,
-        source       => 'FernGreenList ver. 2.0 (日本産シダ植物チェックリスト)',
+        sourcetitle  => 'FernGreenList ver. 2.0',
         sourceauthor => 'Atsushi Ebihara, Tao Fujiwara, Masayuki Takamiya, Motomi Ito, Tetsukazu Yahara',
         sourceurl    => 'https://doi.org/10.57400/data.bnmnsbot.22696618',
     },
@@ -315,41 +332,57 @@ my @SOURCES = (
         desc  => '日本産蘚類チェックリスト (Hattoria 7)',
         files => [ '7_9.pdf' ],
         scope => 5, year => 2016,
-        source       => 'A Revised New Catalog of the Mosses of Japan (Hattoria 7: 9-223)',
-        sourceauthor => '鈴木直 (Tadashi Suzuki)',
+        sourcetitle  => 'A revised new catalog of the mosses of Japan',
+        sourceauthor => 'Tadashi Suzuki',
         sourceurl    => 'https://doi.org/10.18968/hattoria.7.0_9',
     },
     {   dir => 'Bryophytes', id => 'hattoria9', parser => 'hattoria9',
         desc  => '日本産タイ類・ツノゴケ類チェックリスト (Hattoria 9)',
         files => [ '9_53.pdf' ],
         scope => 5, year => 2018,
-        source       => '日本産タイ類・ツノゴケ類チェックリスト，2018 (Hattoria 9: 53-102)',
-        sourceauthor => '片桐知之・古木達郎',
+        sourcetitle  => '日本産タイ類・ツノゴケ類チェックリスト，2018',
+        sourceauthor => '片桐 知之・古木 達郎',
         sourceurl    => 'https://doi.org/10.18968/hattoria.9.0_53',
     },
     {   dir => 'Lichens', id => 'lichenjapan', parser => 'lichens',
         desc  => '日本産地衣類チェックリスト',
         files => [ 'checklist.html' ],
         scope => 8, year => 2026,
-        source       => 'Checklist of Lichens and Allied Fungi of Japan (日本産地衣類および関連菌類チェックリスト)',
-        sourceauthor => 'Ohmura, Y., Miyazawa, K., Tadome, K. & Kashiwadani, H. (eds.)',
+        sourcetitle  => 'Checklist of Lichens and Allied Fungi of Japan',
+        sourceauthor => 'Lichenological Society of Japan',
         sourceurl    => 'https://lichenjapan.jp/checklist/',
+    },
+    {   dir => 'Lichens', id => 'lichen_systematics', parser => 'lichen_systematics',
+        desc  => '日本産地衣類・関連菌類の高次分類群',
+        files => [ 'systematics.html' ],
+        scope => 8, year => 2026,
+        sourcetitle  => 'Classification of higher taxonomic groups of lichens and allied fungi in Japan',
+        sourceauthor => 'Lichenological Society of Japan',
+        sourceurl    => 'https://lichenjapan.jp/systematics/',
     },
     {   dir => 'Fungi', id => 'mycology_jp', parser => 'fungi',
         desc  => '日本産菌類チェックリスト',
         files => [ 'DB20200311.xlsx' ],
         scope => 2, year => 2020,
-        source       => '日本産菌類チェックリスト',
-        sourceauthor => '日本菌学会',
+        sourcetitle  => '日本産菌類チェックリスト',
+        sourceauthor => '日本菌学会 データベース委員会',
         sourceurl    => 'https://www.mycology-jp.org/html/checklist_clist.html',
     },
     {   dir => 'Seaweeds', id => 'seaweeds', parser => 'seaweeds',
         desc  => '日本産海藻リスト',
         files => [ 'Brown/*.html', 'Red/*.html', 'Green/*.html' ],
         scope => 4, year => 2026,
-        source       => '日本産海藻リスト',
-        sourceauthor => '鈴木雅大',
+        sourcetitle  => '日本産海藻リスト',
+        sourceauthor => '鈴木 雅大',
         sourceurl    => 'https://tonysharks.com/Seaweeds_list/Seaweed_list_top.html',
+    },
+    {   dir => 'Viruses', id => 'jsv_virus', parser => 'jsv_virus',
+        desc  => 'ウイルス種名・英名・和名対応リスト',
+        files => [ 'news241125.xlsx', 'news2411252.xlsx' ],
+        scope => 1, year => 2024,
+        sourcetitle  => 'ウイルス種名・英名・和名対応リスト',
+        sourceauthor => '日本ウイルス学会',
+        sourceurl    => 'https://jsv.umin.jp/news/news241125.html',
     },
 );
 
@@ -520,6 +553,10 @@ sub do_parse {
     return parse_lichens($src, $paths)       if $p eq 'lichens';
     return parse_fungi($src, $paths)         if $p eq 'fungi';
     return parse_seaweeds($src, $paths)      if $p eq 'seaweeds';
+    return parse_gbif($src, $paths)          if $p eq 'gbif';
+    return parse_wikidata($src, $paths)      if $p eq 'wikidata';
+    return parse_lichen_systematics($src, $paths) if $p eq 'lichen_systematics';
+    return parse_jsv_virus($src, $paths)     if $p eq 'jsv_virus';
     die "未知のパーサです: $p\n";
 }
 
@@ -696,7 +733,7 @@ sub write_final {
         my $v = $validity->{"$vprefix\t$key"};
         my $valid = $v ? $v->[0] : 1;
         print $fh join("\t", $key, $other, $valid, $c->{rank}, $c->{subrank},
-                       $c->{src}{source}, $c->{src}{sourceauthor}, $c->{src}{sourceurl}), "\n";
+                       $c->{src}{sourcetitle}, $c->{src}{sourceauthor}, $c->{src}{sourceurl}), "\n";
         $n++;
     }
     close $fh;
@@ -745,7 +782,7 @@ sub list_sources {
             $src->{dir}, $src->{id}, $src->{scope}, $src->{year}, $src->{desc};
         printf "  入力: %s\n", join(', ', @{ $src->{files} });
         printf "  展開: %s -> %s\n", @{ $src->{unzip} } if $src->{unzip};
-        printf "  出典: %s / %s\n", $src->{source}, $src->{sourceauthor};
+        printf "  出典: %s / %s\n", $src->{sourcetitle}, $src->{sourceauthor};
     }
     print "\n最終出力: <ディレクトリ>/japname2sciname_VERSION_BUILDDATE.tsv\n";
     print "          <ディレクトリ>/sciname2japname_VERSION_BUILDDATE.tsv\n";
@@ -1252,8 +1289,8 @@ sub norm_japname {
     $s =~ s/\x{3000}//g;
     $s = squeeze($s);
     $s =~ s/[．。\.]+\z//;
-    $s =~ s/\A[\s・,、，]+//;
-    $s =~ s/[\s・,、，]+\z//;
+    $s =~ s/\A[\s・,、，\x{201C}\x{201D}"]+//;
+    $s =~ s/[\s・,、，\x{201C}\x{201D}"]+\z//;
     $s = squeeze($s);
     return $s;
 }
@@ -1405,7 +1442,10 @@ sub is_placeholder {
 # それも和名シノニムとして足す。
 sub add_pair {
     my ($out, $jap, $sci, $rank, $subrank, %opt) = @_;
-    $sci = norm_sciname($sci);
+    # rawsci は学名欄に著者名が入らない情報源用。norm_sciname の
+    # 「名前らしいトークンだけ採る」規則は ICTV の Alfamovirus AMV や
+    # Duamitovirus crpa1 のような種小名を切り落としてしまう。
+    $sci = $opt{rawsci} ? squeeze(fixup_chars($sci)) : norm_sciname($sci);
     return unless length $sci;
     my ($head, @syn);
     if ($opt{nosplit}) { $head = norm_japname(defined $jap ? $jap : '') }
@@ -2771,6 +2811,254 @@ sub despace_japanese {
     return '' unless defined $s;
     1 while $s =~ s/([\x{3040}-\x{30FF}\x{4E00}-\x{9FFF}])\s+(?=[\x{3040}-\x{30FF}\x{4E00}-\x{9FFF}])/$1/;
     return $s;
+}
+
+#-----------------------------------------------------------------------------
+# GBIF Backbone Taxonomy (Darwin Core Archive)
+#
+# backbone.zip を展開した Taxon.tsv (約2.2GB) と VernacularName.tsv を突き合わせる。
+# 和名は VernacularName.tsv の language が ja/jpn の行にあり (27,558件)、
+# taxonID で Taxon.tsv の canonicalName / taxonRank / taxonomicStatus に結び付く。
+#
+# Taxon.tsv は巨大なので :encoding(UTF-8) を通さずバイト列のまま行を読み、
+# 必要な taxonID の行だけを split して該当フィールドを decode する。
+# シノニムの有効名は acceptedNameUsageID の先にあるので2周する。
+#-----------------------------------------------------------------------------
+my %GBIF_RANK = (
+    kingdom => 'kingdom', subkingdom => 'subkingdom',
+    phylum => 'phylum', subphylum => 'subphylum',
+    class => 'class', subclass => 'subclass',
+    order => 'order', suborder => 'suborder',
+    superfamily => 'superfamily', family => 'family', subfamily => 'subfamily',
+    tribe => 'tribe', subtribe => 'subtribe',
+    genus => 'genus', subgenus => 'subgenus', section => 'section',
+    species => 'species', subspecies => 'subspecies',
+    variety => 'varietas', form => 'forma',
+    unranked => 'no rank',
+);
+
+# 「doubtful」は疑わしいというだけで無効名ではないので有効名として扱う。
+my %GBIF_INVALID_STATUS = map { $_ => 1 } (
+    'synonym', 'homotypic synonym', 'heterotypic synonym',
+    'proparte synonym', 'misapplied',
+);
+
+sub parse_gbif {
+    my ($src, $paths) = @_;
+    my ($taxon, $vern);
+    for my $p (@$paths) {
+        $taxon = $p if basename($p) eq 'Taxon.tsv';
+        $vern  = $p if basename($p) eq 'VernacularName.tsv';
+    }
+    die "Taxon.tsv と VernacularName.tsv が揃っていません\n" unless $taxon && $vern;
+
+    my %jap;
+    open my $vh, '<', $vern or die "読めません: $vern: $!\n";
+    binmode $vh;
+    my $vhdr = <$vh>;
+    while (my $line = <$vh>) {
+        chomp $line;
+        my @f = split /\t/, $line, -1;
+        next unless @f >= 3;
+        next unless $f[2] eq 'ja' || $f[2] eq 'jpn';
+        push @{ $jap{ $f[0] } }, Encode::decode('UTF-8', $f[1], Encode::FB_DEFAULT);
+    }
+    close $vh;
+
+    my (%rec, %need);
+    gbif_scan($taxon, \%jap, sub {
+        my ($id, $f) = @_;
+        my $accepted = defined $f->[3] ? $f->[3] : '';
+        $rec{$id} = [
+            Encode::decode('UTF-8', (defined $f->[7]  ? $f->[7]  : ''), Encode::FB_DEFAULT),
+            (defined $f->[11] ? $f->[11] : ''),
+            (defined $f->[14] ? $f->[14] : ''),
+            $accepted,
+        ];
+        $need{$accepted} = 1 if length $accepted && !exists $rec{$accepted};
+    });
+    delete $need{$_} for keys %rec;
+
+    my %accepted_name;
+    if (%need) {
+        gbif_scan($taxon, \%need, sub {
+            my ($id, $f) = @_;
+            $accepted_name{$id} =
+                Encode::decode('UTF-8', (defined $f->[7] ? $f->[7] : ''), Encode::FB_DEFAULT);
+        });
+    }
+
+    my @out;
+    for my $id (keys %rec) {
+        my ($canon, $grank, $status, $accid) = @{ $rec{$id} };
+        next unless length $canon;
+        my ($rank, $subrank) = exists $GBIF_RANK{$grank}
+                             ? (rk($GBIF_RANK{$grank}), 1)
+                             : rank_from_sciname(norm_sciname($canon));
+        my $valid = $GBIF_INVALID_STATUS{$status} ? 0 : 1;
+        my $acc = length $accid
+                ? (exists $accepted_name{$accid} ? $accepted_name{$accid}
+                                                 : ($rec{$accid} ? $rec{$accid}[0] : ''))
+                : '';
+        for my $j (@{ $jap{$id} }) {
+            add_pair(\@out, $j, $canon, $rank, $subrank, scivalid => $valid);
+            add_pair(\@out, $j, $acc, $rank, $subrank)
+                if !$valid && length $acc && $acc ne $canon;
+        }
+    }
+    return \@out;
+}
+
+# 1列目の taxonID が %$want にある行だけを split してコールバックへ渡す。
+sub gbif_scan {
+    my ($path, $want, $cb) = @_;
+    open my $fh, '<', $path or die "読めません: $path: $!\n";
+    binmode $fh;
+    my $hdr = <$fh>;
+    while (my $line = <$fh>) {
+        my $tab = index($line, "\t");
+        next if $tab < 1;
+        my $id = substr($line, 0, $tab);
+        next unless exists $want->{$id};
+        chomp $line;
+        my @f = split /\t/, $line, -1;
+        $cb->($id, \@f);
+    }
+    close $fh;
+}
+
+#-----------------------------------------------------------------------------
+# Wikidata (QLever で取得した CSV)
+#
+# 列は qid / sci / ja / ranks / ranks_ja / parents / aliases / commons。
+# ranks_ja が日本語の階級名 (種・属・科…) なので rank はそこから決める。
+# aliases (skos:altLabel) と commons (P1843) は和名シノニムとして出す。
+# 有効名／シノニムの情報は持たないので学名は常に有効名として扱う。
+#-----------------------------------------------------------------------------
+my %WIKIDATA_RANK = (
+    '界' => 'kingdom', '亜界' => 'subkingdom',
+    '上門' => 'superphylum', '門' => 'phylum', '亜門' => 'subphylum',
+    '上綱' => 'superclass', '綱' => 'class', '亜綱' => 'subclass', '下綱' => 'infraclass',
+    '上目' => 'superorder', '目' => 'order', '亜目' => 'suborder',
+    '下目' => 'infraorder', '小目' => 'parvorder',
+    '上科' => 'superfamily', '科' => 'family', '亜科' => 'subfamily',
+    '族' => 'tribe', '亜族' => 'subtribe',
+    '属' => 'genus', '亜属' => 'subgenus', '節' => 'section', '連' => 'tribe',
+    '種' => 'species', '亜種' => 'subspecies',
+    '変種' => 'varietas', '品種' => 'forma',
+    '系統群' => 'clade', 'クレード' => 'clade',
+);
+
+sub parse_wikidata {
+    my ($src, $paths) = @_;
+    require Text::CSV;
+    my @out;
+    for my $path (@$paths) {
+        my $csv = Text::CSV->new({ binary => 1, auto_diag => 0 });
+        open my $fh, '<:encoding(UTF-8)', $path or die "読めません: $path: $!\n";
+        my $hdr = $csv->getline($fh) or next;
+        my %ix;
+        $ix{ $hdr->[$_] } = $_ for 0 .. $#$hdr;
+        while (my $r = $csv->getline($fh)) {
+            my $get = sub { my ($k) = @_;
+                            return exists $ix{$k} && defined $r->[$ix{$k}] ? $r->[$ix{$k}] : '' };
+            my $sci = norm_sciname($get->('sci'));
+            my $jap = $get->('ja');
+            next unless length $sci && length $jap;
+            my ($rank, $subrank);
+            for my $r_ja (split /\|/, $get->('ranks_ja')) {
+                next unless exists $WIKIDATA_RANK{$r_ja};
+                ($rank, $subrank) = (rk($WIKIDATA_RANK{$r_ja}), 1);
+                last;
+            }
+            ($rank, $subrank) = rank_from_sciname($sci) unless defined $rank;
+            add_pair(\@out, $jap, $sci, $rank, $subrank);
+            my $head = (split_japsyn($jap))[0];
+            for my $col ('aliases', 'commons') {
+                for my $a (split /\|/, $get->($col)) {
+                    next unless looks_japanese($a);
+                    next if (split_japsyn($a))[0] eq $head;
+                    add_pair(\@out, $a, $sci, $rank, $subrank, japvalid => 0);
+                }
+            }
+        }
+        close $fh;
+    }
+    return \@out;
+}
+
+#-----------------------------------------------------------------------------
+# 日本産地衣類および関連菌類の高次分類群 (HTML)
+#
+# 罫線文字 (｜ －) と全角空白による木構造で「学名 [*] 和名」を並べたページ。
+# 字下げの深さは使わず、和名の接尾辞 (門/綱/亜綱/目/科/属) で rank を決める。
+# 「*」は日本産の種を含む属などを示す印なので学名から取り除く。
+#-----------------------------------------------------------------------------
+sub parse_lichen_systematics {
+    my ($src, $paths) = @_;
+    my @out;
+    for my $path (@$paths) {
+        my $html = read_html($path);
+        $html =~ s{<br\s*/?>}{\n}gi;
+        $html =~ s{</(?:p|div|li|h[1-6])>}{\n}gi;
+        my $text = html_unescape(($html =~ s{<[^>]*>}{}gsr));
+        for my $raw (split /\n/, $text) {
+            my $line = fixup_chars($raw);
+            $line =~ s/\x{3000}/ /g;
+            $line =~ s/\A[\s\x{FF5C}\x{FF0D}|\-]+//;
+            # 「(Syn.: Dolichousnea)」「（“ピンタケ目”の和名は却下）」は注記であって
+            # 和名の別名ではないので、括弧ごと落としてから切り分ける。
+            $line =~ s/[（(][^）)]*(?:Syn\.|却下)[^）)]*[）)]//g;
+            $line = squeeze($line);
+            next unless $line =~ /\A([A-Z][A-Za-z-]+)\s*\*?\s+(.+)\z/;
+            my ($sci, $jap) = ($1, $2);
+            next unless looks_japanese($jap);
+            # 門のような上位の行は総大文字で書かれている
+            $sci = ucfirst(lc $sci) if $sci =~ /\A[A-Z-]+\z/;
+            my ($head) = split_japsyn($jap);
+            my $rname = jap_rank_suffix($head);
+            my ($rank, $subrank) = defined $rname ? (rk($rname), 1)
+                                                  : rank_from_sciname($sci);
+            add_pair(\@out, $jap, $sci, $rank, $subrank);
+        }
+    }
+    return \@out;
+}
+
+#-----------------------------------------------------------------------------
+# ウイルス種名・英名・和名対応リスト (xlsx 2ファイル)
+#
+# ICTV の VMR (Virus Metadata Resource) MSL39 v1 に和名の列を足したもの。
+# 植物・藻類・菌類のファイルは列名が「ウイルス和名」、ヒト動物のファイルは「和名」。
+# Realm〜Genus の列はラテン名だけで和名がないため、種の行だけが出力に寄与する。
+#-----------------------------------------------------------------------------
+sub parse_jsv_virus {
+    my ($src, $paths) = @_;
+    my @out;
+    for my $path (@$paths) {
+        my ($ic_sp, $ic_ja);
+        my $first = 1;
+        read_xlsx($path, 0, sub {
+            my ($rn, $c) = @_;
+            my @f = map { defined $_ ? squeeze($_) : '' } @$c;
+            if ($first) {
+                $first = 0;
+                for my $i (0 .. $#f) {
+                    $ic_sp = $i if $f[$i] eq 'Species';
+                    $ic_ja = $i if !defined $ic_ja && ($f[$i] eq 'ウイルス和名' || $f[$i] eq '和名');
+                }
+                return;
+            }
+            return unless defined $ic_sp && defined $ic_ja;
+            my ($sci, $jap) = ($f[$ic_sp] // '', $f[$ic_ja] // '');
+            return unless length $sci && length $jap;
+            my ($rank, $subrank) = rank_from_sciname($sci);
+            add_pair(\@out, $jap, $sci, $rank, $subrank, rawsci => 1);
+        });
+        note($src, '列を特定できませんでした: ' . relname($path))
+            unless defined $ic_sp && defined $ic_ja;
+    }
+    return \@out;
 }
 
 #-----------------------------------------------------------------------------
