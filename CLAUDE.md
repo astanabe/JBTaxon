@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## リポジトリの現状
 
-現時点でこのリポジトリに存在するのは `README.md`・`rank.def`・`yomi.tsv`・`.gitignore`、実装済みの `fetch_data.pl`、および分類群ごとのディレクトリに置いた `README.md` 15件のみ。残る3スクリプト (`generate_tables.pl` / `generate_database.pl` / `generate_dictionary.pl`) は**まだ実装されていない**。README.md は実装すべき仕様書として読むこと。ビルド・lint・テストの仕組みは未整備で、検証は `perl -c` と `fetch_data.pl --list` / `--dry-run` および実取得で行っている。
+現時点でこのリポジトリに存在するのは `README.md`・`rank.def`・`yomi.tsv`・`VERSION`・`.gitignore`、実装済みの `fetch_data.pl` と `generate_tables.pl`、および分類群ごとのディレクトリに置いた `README.md` 15件。残る2スクリプト (`generate_database.pl` / `generate_dictionary.pl`) は**まだ実装されていない**。README.md は実装すべき仕様書として読むこと。ビルド・lint・テストの仕組みは未整備で、検証は `perl -c` と各スクリプトの `--list` / `--dry-run`、および実データでの実行と件数突き合わせで行っている。
+
+`VERSION` はリポジトリルートの1行のバージョン文字列。`generate_tables.pl` 以降の生成物のファイル名に `_VERSION_BUILDDATE` として入る（BUILDDATE は実行日の `YYYYMMDD`）。
 
 実行環境は Perl (`/usr/bin/perl`, v5.38)。README で規定されている4つのスクリプトはすべて `.pl`。
 
@@ -73,6 +75,41 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 - `manual` 種別は一切ダウンロードせず、期待パスの存在を確認して未配置のものを実行末尾にまとめて案内する。
 - 全件取得は約510ダウンロード・約45分。実測は 44分46秒（取得491 / スキップ17）。
 - **`Seaweeds/Red/Erythropeltidales.html` は情報源側のリンク切れ（HTTP 404）で恒久的に取得できない。** トップページから2箇所リンクされているがサーバ上に実体がない。このため全件取得の終了コードは常に 1 になる。URL の除外をハードコードはしていない。
+
+### generate_tables.pl の実装契約
+
+実装済み。実行は約2分・ピーク RSS 約220MB（全23ソース・508ファイル、中間レコード約13万件、最終出力 約23.5万行）。以下は変更してはならない約束事：
+
+- **非コアモジュールを使う。** `HTML::TreeBuilder` / `HTML::TableExtract` / `Text::CSV` の3つと、外部コマンド `pdftotext` (poppler-utils + poppler-data)。起動時に `check_dependencies()` が不足を検出し、apt / cpanm の案内を出して exit 2 する。これ以上増やさないこと。
+- **xlsx は自前のストリーミングリーダで読む** (`read_xlsx`)。`Spreadsheet::ParseXLSX` は使わない。`xl/sharedStrings.xml` と該当シートの XML を `IO::Uncompress::Unzip`（コア）で直接読み、行単位でコールバックへ渡す。ルビ (`<rPh>`) の除去・`inlineStr`・結合セルの繰り下ろしに対応し、**`<dimension>` は信用しない**（R06 は 1048576 行と書いてある）。zip の展開も `IO::Uncompress::Unzip`。
+- **`use utf8` + `Encode` で文字列として扱う。** `fetch_data.pl` はバイト列のままだが、本スクリプトは UTF-8・cp932・PDF 抽出テキストが混ざるので方針が違う。出力は `binmode $fh, ':encoding(UTF-8)'`。
+- **`read_html` は die させない。** UTF-8 として厳密に解釈できなければ cp932 を試し、それも駄目なら `FB_DEFAULT` で読む。海藻の4ファイル（`Brown/Asterocladales.html` / `Desmarestiales.html` / `Dictyotales.html` / `Discosporangiales.html`）は charset の指定がなく中身が cp932 なので、この経路がないと和名が化ける。
+- **NFKC は使わない。** `Itô` / `Bouchè` / `Váňa` を壊す。リガチャ (`ﬁ ﬂ ﬀ`) と康熙部首だけを明示的な置換表 (`%CHAR_FIXUP` / `%KANGXI`) で直す。
+- 中間出力はソース別に `<分類群>/.jbtaxon/<ソースID>.tsv`（6列 `japname / sciname / japvalid / scivalid / rank / subrank`）。既定では最後に削除し、`--keep` で残す。`.gitignore` の `/<分類群>/*` に既にマッチするのでパターンの追加は不要。
+- **ファイル末尾の「実行」ブロックより前にサブルーチンが使う `my` の表を置くこと。** 実行文がファイル途中にあると、その後ろで宣言された `my %TABLE = (...)` の代入前に参照してしまい、黙って空の表を使う。この事故を防ぐため実行文はすべてファイル末尾に集めてある。
+- 失敗しても即座に中断せず最後まで走り切り、失敗一覧を末尾に再掲する。exit は `$n_fail ? 1 : 0`。
+- CLI: `--dir` / `--only`（分類群、複数指定可）/ `--source`（ソースID、複数指定可）/ `--force` / `--keep` / `--version` / `--builddate` / `--list` / `--dry-run` / `--help`。`--list` と `--dry-run` はパースしない。
+
+#### 衝突解決は2系統を別々の表で持つ
+
+`merge_directory()` は2周する。**この2つを混同しないこと。**
+
+1. 第1周で `%validity` を作る。名前ごとに**最も新しいソースの判定だけ**を採る（狭さは見ない）。
+2. 第2周で `%adopt_j2s` / `%adopt_s2j` を作る。衝突キーは1列目の名前で、(a) `scope` が大きい（＝狭い）ソース、(b) 同じなら `year` が新しい、(c) それも同じなら `@SOURCES` の定義順。
+
+**2列目に置けるのは「解決後の有効性が 1」の名前だけ**。この制約を第2周に入れてあるので「2列目にシノニムは使わない」が構造として保証される。レコード自身のフラグだけで判定すると、古いソースが有効名と言い新しいソースがシノニムと言う名前が2列目に残ってしまう。
+
+`scope` は対象分類群の階層を `rank.def` の rank 番号で表したもので、**大きいほど狭い**。`year` は版が明示されているソースはその年、継続更新のサイトは取得年（2026）。
+
+#### ソース別の実装で外せない点
+
+- **NARO** — `<a>` 単位でパースしない（アンカー境界が分類群境界とずれる）。セル HTML から `</?a…>` を除去し `<br>` で行分割して、`└` 行を新しい分類群の開始、`(…)` 行をその和名として読む。重複排除は `categorySelect('ID','4')` の **ID**（学名と和名の組では別属の同名種小名が潰れる）。種の列は種小名だけなので属の列と連結して二名法にする。`└` の字下げは深さを表さないので、rank は和名の接尾辞（`%NARO_JAP_SUFFIX`）→ 学名の語尾 → 列の基底 rank に `subrank=2`、の順で決める。`syn : ` 前置は `scivalid=0`。
+- **shigainsect** — `ガロアムシ目2025.xlsx` だけヘッダの `種名（学名）` と `種名（和名）` が入れ替わっている（データの並びは他と同じ）。ヘッダで2列を特定したうえで、**毎行その内容がラテン文字か日本語かで振り分ける**。`亜目名` が `亜目` になっているファイルもある。
+- **PDF** — CJK の行折り返しは**空白なしで連結**する（`fold_pdf_lines`）。左マージンはページの偶奇で変わるので**字下げの絶対値を使わない**。レコードの開始行かどうかは行頭のキーワードや大文字/小文字で判定する。
+- **注記の除去は括弧内シノニムの切り出しより先に行う**（`strip_japnotes`）。順序を逆にすると `（和名新称）` や `(新称)` そのものが和名シノニムとして出力に混ざる。
+- **`Mammals` は世界哺乳類標準和名リスト**（日本産ではない）。zip を自動展開し、PDF ではなく xlsx を使う。ヘッダ2行・データは3行目から・5,526行目以降の付録ブロック（1,288行）は除外。
+- **`Hattoria 9 (9_53.pdf)` の §5 注釈からはシノニムを取らない。** 注釈は日本語の散文で、機械的に切り出すと誤った名前の対応を作る。本体は有効名のみなので `scivalid` は常に 1。
+- **`Seaweeds/Red/Erythropeltidales.html` は情報源側の 404 で存在しない。** 入力ファイルの欠損を許容すること。
 
 ### ダウンロードURLは固定する（追従自動化しない）
 
@@ -181,12 +218,14 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 
 すべてタブ区切り。ヘッダ行なしの列順で表現する。
 
-### 中間テーブル（ステップ2の出力）
+### 分類群別テーブル（ステップ2の出力）
 
-- `japname2sciname.tsv` — `japname / sciname / japvalid / rank / subrank`。和名シノニムがある場合、同一 sciname に対し japname が異なる行が複数生じる。sciname 側にシノニムは使わない。
-- `sciname2japname.tsv` — `sciname / japname / scivalid / rank / subrank`。学名シノニムがある場合、同一 japname に対し sciname が異なる行が複数生じる。japname 側にシノニムは使わない。
+- `<分類群>/japname2sciname_VERSION_BUILDDATE.tsv` — `japname / sciname / japvalid / rank / subrank / source / sourceauthor / sourceurl`。和名シノニムがある場合、同一 sciname に対し japname が異なる行が複数生じる。sciname 側にシノニムは使わない。
+- `<分類群>/sciname2japname_VERSION_BUILDDATE.tsv` — `sciname / japname / scivalid / rank / subrank / source / sourceauthor / sourceurl`。学名シノニムがある場合、同一 japname に対し sciname が異なる行が複数生じる。japname 側にシノニムは使わない。
 
-`japvalid` / `scivalid` は1列目の名前が有効名かどうかのフラグ（0 = invalid, 1 = valid）で、シノニムなら 0。**2列目の名前側にはシノニムが現れない設計なので、このフラグは常に1列目に対応する**。位置は rank/subrank の手前（3列目）。
+`japvalid` / `scivalid` は1列目の名前が有効名かどうかのフラグ（0 = invalid, 1 = valid）で、シノニムなら 0。**2列目の名前側にはシノニムが現れない設計なので、このフラグは常に1列目に対応する**。位置は rank/subrank の手前（3列目）。`source` / `sourceauthor` / `sourceurl` は採用したソースのもので、**ライセンス上は出典明記が不要なソース（CC0 など）も含め全ソースで3列とも必ず埋める**。出典明記が求められる情報源（魚類・YList・地衣類・蝶類便覧・哺乳類）の要求もこれで満たされる。値は `generate_tables.pl` の `@SOURCES` が唯一の持ち場で、原典やページに著者の記載があればその表記に従い、記載がなければ発行主体（学会・機関）を書く。
+
+**1列目はテーブル内で一意**（衝突解決で1つに絞られる）。
 
 ### IME辞書（ステップ4の出力）
 

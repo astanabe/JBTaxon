@@ -40,6 +40,8 @@
 *.part
 
 # 生成物 (generate_database.pl / generate_dictionary.pl の出力)
+# generate_tables.pl の出力 (中間 TSV と最終 TSV) は分類群ディレクトリ内に
+# 出るので、上の /<分類群>/* で既に除外されている。
 /jbtaxon_*.sqlite3
-/yomi2japname.tsv
-/yomi2sciname.tsv
+/yomi2japname_*.tsv
+/yomi2sciname_*.tsv
