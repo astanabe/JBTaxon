@@ -40,7 +40,7 @@ yomi    japname
 
 ## 種名チェックリストについて
 
-以下にソースとなるチェックリストを全て掲載します。なお、複数のソース間で衝突する場合は、(1) より狭い分類群のソースを優先、(2) 次いでより新しいソースを優先します。ただし、有効名とシノニムの判定には、「より新しいソースか」だけを用い、より狭い分類群のソースかどうかは考慮しません。
+以下にソースとなるチェックリストを全て掲載します。なお、複数のソース間で衝突する場合は、(1) より狭い分類群のソースを優先、(2) 次いでより新しいソースを優先します。ただし、有効名とシノニムの判定には、Catalogue of Lifeを基本としつつ「より新しいソースか」だけを用い、より狭い分類群のソースかどうかは考慮しません。Catalogue of Lifeとその他ソースで有効名が決められない場合、NCBI Taxonomyを使用します。
 
 ### 全体 (AllTaxa)
 
@@ -50,7 +50,7 @@ yomi    japname
 
 - https://www.nilim.go.jp/lab/fbg/ksnkankyo/mizukokuweb/system/seibutsuListfile.htm
 
-#### Catalogue of Life (2026-08-26 XR)
+#### Catalogue of Life (2026-08-26 XR) (Catalogue of Life Foundation)
 
 以下のURLから取得できるzipファイルがデータファイルを含む配布ファイルです。`fetch_data.pl`が実行されると自動的に`AllTaxa/export.zip`としてダウンロードされます。
 
