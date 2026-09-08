@@ -1650,14 +1650,16 @@ sub taxonomy_scores {
     return (\%gbif, \%ncbi);
 }
 
-# 候補のうち有効名を1つ選ぶ。決められなければ ($cands->[0], 0) を返す。
+# 候補のうち有効名を1つ選ぶ。渡されたスコア表を順に見て、最上位が単独で
+# 0 より大きくなった時点で決める。決められなければ ($cands->[0], 0) を返す。
 sub choose_valid_sciname {
-    my ($cands, $gbif, $ncbi) = @_;
+    my ($cands, @tables) = @_;
     return ($cands->[0], 1) if @$cands == 1;
-    for my $tbl ($gbif, $ncbi) {
-        my @sorted = sort { $tbl->{$b} <=> $tbl->{$a} } @$cands;
-        next if $tbl->{ $sorted[0] } == 0;
-        next if $tbl->{ $sorted[0] } == $tbl->{ $sorted[1] };
+    for my $tbl (@tables) {
+        next unless $tbl;
+        my @sorted = sort { ($tbl->{$b} || 0) <=> ($tbl->{$a} || 0) } @$cands;
+        next unless ($tbl->{ $sorted[0] } || 0) > 0;
+        next if ($tbl->{ $sorted[0] } || 0) == ($tbl->{ $sorted[1] } || 0);
         return ($sorted[0], 1);
     }
     return ($cands->[0], 0);
@@ -1718,13 +1720,24 @@ sub parse_jaflist {
     }
     my ($gbif, $ncbi) = taxonomy_scores([ sort keys %need ]);
 
+    # 上の2つで決まらなかった候補だけ WoRMS に問い合わせる
+    my %unresolved;
+    for my $r (@rows) {
+        my $cands = $r->[1];
+        next unless @$cands > 1;
+        next if (choose_valid_sciname($cands, $gbif, $ncbi))[1];
+        next unless grep { !is_placeholder($_->[0], undef) } jaflist_japnames($r->[0]);
+        $unresolved{$_} = 1 for @$cands;
+    }
+    my $worms = worms_scores([ sort keys %unresolved ], $src);
+
     for my $r (@rows) {
         my ($jap, $cands) = @$r;
         my @japnames = jaflist_japnames($jap);
         # 和名のない行は出力に寄与しないので、決められなくても通知しない
         @japnames = grep { !is_placeholder($_->[0], undef) } @japnames;
         next unless @japnames;
-        my ($valid, $decided) = choose_valid_sciname($cands, $gbif, $ncbi);
+        my ($valid, $decided) = choose_valid_sciname($cands, $gbif, $ncbi, $worms);
         note($src, sprintf('有効名を決められませんでした (%s を採用): %s',
                            $valid, join(' / ', @$cands)))
             if !$decided && @$cands > 1;
@@ -3253,6 +3266,114 @@ sub parse_jsv_virus {
             unless defined $ic_sp && defined $ic_ja;
     }
     return \@out;
+}
+
+#-----------------------------------------------------------------------------
+# WoRMS (World Register of Marine Species) への問い合わせ
+#
+# GBIF Backbone Taxonomy と NCBI Taxonomy のどちらでも有効名を決められなかった
+# ときの3段目。REST API (AphiaRecordsByName) を引く。
+#
+# ここは generate_tables.pl で唯一ネットワークにアクセスする箇所である。
+#   - 上の2段で決まった名前は問い合わせない (通常は0〜数件で済む)
+#   - 結果は WoRMS/cache.tsv に貯めて次回以降は問い合わせない
+#   - 問い合わせと問い合わせの間は5秒空ける (robots.txt の Crawl-delay: 1 より長い)
+#   - 通信できなければ判定しないだけで、処理は止めない (オフラインでも動く)
+#
+# 状態のスコアは 3=accepted / 2=有効名と属が同じ (現在の組み合わせ) /
+# 1=登録はあるが上のどちらでもない / 0=見つからない。
+# 「ヤマドリ」の Synchiropus ijimai と Neosynchiropus ijimai はどちらも
+# unaccepted だが、WoRMS の有効名が Neosynchiropus ijimae なので後者が 2 になる。
+#-----------------------------------------------------------------------------
+my $WORMS_REST   = 'https://www.marinespecies.org/rest/AphiaRecordsByName';
+my $WORMS_SLEEP  = 5;
+my $WORMS_DIR    = 'WoRMS';
+my $WORMS_CACHE  = 'cache.tsv';
+my $worms_calls  = 0;
+
+sub worms_scores {
+    my ($names, $src) = @_;
+    my %score = map { $_ => 0 } @$names;
+    return \%score unless @$names;
+
+    my $path = File::Spec->catfile($basedir, $WORMS_DIR, $WORMS_CACHE);
+    my %cache;
+    if (open my $fh, '<:encoding(UTF-8)', $path) {
+        while (my $line = <$fh>) {
+            chomp $line;
+            my @f = split /\t/, $line, -1;
+            $cache{ $f[0] } = [ $f[1], $f[2] ] if @f >= 3;
+        }
+        close $fh;
+    }
+
+    my $added = 0;
+    for my $name (@$names) {
+        next if exists $cache{$name};
+        my $rec = worms_query($name);
+        unless (defined $rec) {
+            note($src, 'WoRMS に問い合わせできませんでした: ' . $name);
+            last;
+        }
+        $cache{$name} = $rec;
+        $added++;
+    }
+    worms_write_cache($path, \%cache) if $added;
+
+    for my $name (@$names) {
+        my $rec = $cache{$name} or next;
+        my ($status, $valid) = @$rec;
+        next unless defined $status && length $status;
+        if ($status eq 'accepted') { $score{$name} = 3; next }
+        my ($genus)  = $name =~ /\A(\S+)/;
+        my ($vgenus) = (defined $valid && length $valid) ? ($valid =~ /\A(\S+)/) : ();
+        $score{$name} = (defined $vgenus && defined $genus && $vgenus eq $genus) ? 2 : 1;
+    }
+    return \%score;
+}
+
+# 1件問い合わせる。戻り値は [status, valid_name]、見つからなければ ['','']、
+# 通信できなければ undef。
+sub worms_query {
+    my ($name) = @_;
+    require JSON::PP;
+    (my $esc = $name) =~ s/([^A-Za-z0-9_.~-])/sprintf('%%%02X', ord $1)/ge;
+    my $url = "$WORMS_REST/$esc?like=false&marine_only=false";
+    sleep $WORMS_SLEEP if $worms_calls++;
+    open my $ph, '-|', 'curl',
+        '--fail', '--silent', '--show-error', '--location',
+        '--connect-timeout', '30', '--max-time', '120',
+        '--user-agent', 'JBTaxon generate_tables.pl',
+        '--', $url or return undef;
+    binmode $ph;
+    my $body = do { local $/; <$ph> };
+    my $ok = close $ph;
+    return undef unless $ok;
+    $body = '' unless defined $body;
+    return [ '', '' ] unless $body =~ /\S/;          # 204 No Content = 該当なし
+    my $recs = eval { JSON::PP->new->utf8->decode($body) };
+    return [ '', '' ] unless ref $recs eq 'ARRAY' && @$recs;
+    # 完全一致の1件目を使う。accepted があればそれを優先する。
+    my ($best) = grep { ref $_ eq 'HASH' && ($_->{status} || '') eq 'accepted' } @$recs;
+    $best = $recs->[0] unless $best;
+    return [ '', '' ] unless ref $best eq 'HASH';
+    return [ (defined $best->{status} ? $best->{status} : ''),
+             (defined $best->{valid_name} ? $best->{valid_name} : '') ];
+}
+
+sub worms_write_cache {
+    my ($path, $cache) = @_;
+    my $dir = dirname($path);
+    unless (-d $dir) {
+        make_path($dir);
+        return unless -d $dir;
+    }
+    open my $fh, '>', $path or return;
+    binmode $fh, ':encoding(UTF-8)';
+    for my $name (sort keys %$cache) {
+        print $fh join("\t", $name, @{ $cache->{$name} }), "\n";
+    }
+    close $fh;
 }
 
 #-----------------------------------------------------------------------------

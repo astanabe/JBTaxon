@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 情報源となる生物種名チェックリストの一部は改変・再配布が禁止されている。そのため **JBTaxon の成果物（DB や辞書ファイル）自体をリポジトリで配布することはできない**。配布するのは「各ユーザーがローカルで成果物を生成するためのスクリプト」だけ。生データや生成物をリポジトリにコミットする変更は、この制約に抵触するため行わないこと。
 
-`.gitignore` がこれを機械的に担保している。分類群ディレクトリの中身（`/AllTaxa/*` など16件）と `/NCBITaxonomy/*`、`*.part`、生成物（`/jbtaxon_*.sqlite3`・`/yomi2japname_*.tsv`・`/yomi2sciname_*.tsv`）を除外し、`!/<分類群>/README.md` で各ディレクトリの `README.md` だけを追跡する。**例外は `!/AllTaxa/wikidata.rq`**（生データではなく Wikidata 取得用の SPARQL クエリなので追跡する）。**パターンは必ず `/<分類群>/*` の形で書くこと**（`/AllTaxa/` のようにディレクトリ自体を除外すると git が中に降りなくなり、`README.md` を再包含できない）。新しい分類群ディレクトリを追加したときは、除外と再包含の2組を両方追加する。生データを置いた状態でも `git add -A` で入るのはスクリプトと `README.md` だけになる。
+`.gitignore` がこれを機械的に担保している。分類群ディレクトリの中身（`/AllTaxa/*` など16件）と参照データの `/NCBITaxonomy/*`・`/WoRMS/*`、`*.part`、生成物（`/jbtaxon_*.sqlite3`・`/yomi2japname_*.tsv`・`/yomi2sciname_*.tsv`）を除外し、`!/<分類群>/README.md` で各ディレクトリの `README.md` だけを追跡する。**例外は `!/AllTaxa/wikidata.rq`**（生データではなく Wikidata 取得用の SPARQL クエリなので追跡する）。**パターンは必ず `/<分類群>/*` の形で書くこと**（`/AllTaxa/` のようにディレクトリ自体を除外すると git が中に降りなくなり、`README.md` を再包含できない）。新しい分類群ディレクトリを追加したときは、除外と再包含の2組を両方追加する。生データを置いた状態でも `git add -A` で入るのはスクリプトと `README.md` だけになる。
 
 ## パイプライン構造
 
@@ -117,7 +117,8 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
   - 「X型Z」「～X型」の和名からは型の指定を外した和名も出す（`japvalid=0`）。「太平洋系陸封型イトヨ」→「イトヨ」、「ヤマトシマドジョウA型」→「ヤマトシマドジョウ」。**型の直前が英数字1文字のときだけ「～X型」とみなす**（「トミヨ属雄物型」を壊さないため）。
   - 「サツキマス・アマゴ」のように「・」で2つの和名を併記した行は、分割前に加えて分割後の和名も有効名として出し、分割後には `nos2j` を立てる。
   Wikidata の「ロベリア・ラキシフローラ」やウイルスの「A型肝炎ウイルス」に同じ規則を当てると壊れるので、**この3つは JAFList のパーサの中だけに置く**。
-- **1つの和名に複数の学名が併記されているときの有効名の判定**は `taxonomy_scores()` が外部データベースに問い合わせる。(1) GBIF Backbone Taxonomy (`AllTaxa/Taxon.tsv`) の `taxonomicStatus`、(2) NCBI Taxonomy (`NCBITaxonomy/names.dmp`) の name class（`scientific name` なら有効名）の順で、どちらでも決まらなければ実行末尾の「注意」で報告する。どちらのファイルも巨大なので候補の属名を並べた正規表現で行を絞ってから分解し、ファイルが無ければその段を飛ばす。
+- **1つの和名に複数の学名が併記されているときの有効名の判定**は3段階で行う。(1) GBIF Backbone Taxonomy (`AllTaxa/Taxon.tsv`) の `taxonomicStatus`、(2) NCBI Taxonomy (`NCBITaxonomy/names.dmp`) の name class（`scientific name` なら有効名）、(3) WoRMS の REST API。どれでも決まらなければ実行末尾の「注意」で報告する。(1)(2) のファイルは巨大なので候補の属名を並べた正規表現で行を絞ってから分解し、ファイルが無ければその段を飛ばす。
+- **WoRMS への問い合わせが `generate_tables.pl` で唯一ネットワークにアクセスする箇所**である。(1)(2) で決まった名前は問い合わせないので通常0〜数件で済む。結果は `WoRMS/cache.tsv` に貯めて次回以降は問い合わせない。問い合わせの間隔は5秒（`marinespecies.org` の robots.txt の `Crawl-delay: 1` より長い。`/rest/` は Disallow の対象外）。**通信できなければ判定を諦めるだけで処理は止めない**ので、オフラインでも完走する。スコアは `3`=`accepted` / `2`=有効名と属名が一致（現在の組み合わせ）/ `1`=登録はあるがそのどちらでもない / `0`=見つからない。
 - **`norm_sciname` は接続語の直後だけ識別子を許す。** `sp. 1` / `subsp. 2` / `sp. L` / `sp. 'yamato'` を残しつつ、著者名を種小名と取り違えないため。`sensu` `auct.` `non` `nec` `complex` `group` `Type` `of` は名前の一部ではないのでそこで打ち切る。
 - **GBIF** — `backbone.zip` を展開した `Taxon.tsv`（約2.2GB）と `VernacularName.tsv` を突き合わせる。巨大なので **`:encoding(UTF-8)` を通さずバイト列で行を読み、1列目の taxonID が必要な集合にある行だけ split して該当フィールドを decode する**。シノニムの有効名は `acceptedNameUsageID` の先にあるので Taxon.tsv を2周する。`language` が `ja` の和名 27,558件のうち約6,800件は「Tenjikuzame」のようなローマ字表記で、`is_placeholder` が日本語文字を含まない名前として落とす（これは意図した挙動）。
 - **Wikidata** — `ranks_ja`（種・属・科…）から rank を決め、`aliases`（skos:altLabel）と `commons`（P1843）を和名シノニムとして出す。有効名／シノニムの情報を持たないので学名は常に有効名。
