@@ -74,11 +74,10 @@ my @SOURCES = (
     {   dir  => 'AllTaxa',
         type => 'file',
         desc => 'Catalogue of Life (2026-08-26 XR)',
-        # ChecklistBank の ColDP エクスポート。api.checklistbank.org は
-        # download.checklistbank.org のジョブ URL へ 302 で飛ばすので --location が要る。
-        # 大きいので取得に時間がかかる。展開は generate_tables.pl の仕事。
-        files => [ [ 'https://api.checklistbank.org/dataset/316165/export.zip?extended=true&format=ColDP',
-                     'export.zip' ] ],
+        # ChecklistBank が月次で置いている ColDP の配布ファイル。
+        # 約1.26GB あるので取得に時間がかかる。展開は generate_tables.pl の仕事。
+        files => [ [ 'https://download.checklistbank.org/col/monthly/2026-08-26_xr_coldp.zip',
+                     '2026-08-26_xr_coldp.zip' ] ],
     },
     {   dir   => 'AllTaxa',
         type  => 'sparql',

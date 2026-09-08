@@ -202,12 +202,12 @@ my @SOURCES = (
         files => [ 'NameUsage.tsv', 'VernacularName.tsv' ],
         # ColDP の書庫は 5.6GB・21,425 ファイルある。必要な2つだけ展開し、
         # source/*.yaml は書庫から直接読む。
-        unzip => [ 'export.zip', 'NameUsage.tsv' ],
+        unzip => [ '2026-08-26_xr_coldp.zip', 'NameUsage.tsv' ],
         unzip_only => [ 'NameUsage.tsv', 'VernacularName.tsv' ],
         scope => 0, year => 2026,
         sourcetitle  => 'Catalogue of Life',
-        sourceauthor => [ 'Olaf Bánki', 'Yury Roskov', 'Markus Döring' ],
-        sourceurl    => 'https://api.checklistbank.org/dataset/316165/export.zip?extended=true&format=ColDP',
+        sourceauthor => [ 'Catalogue of Life Foundation' ],
+        sourceurl    => 'https://download.checklistbank.org/col/monthly/2026-08-26_xr_coldp.zip',
     },
     {   dir => 'AllTaxa', id => 'wikidata', parser => 'wikidata',
         desc  => 'Wikidata 学名・和名対応 (QLever で取得した CSV)',
@@ -3093,7 +3093,7 @@ sub despace_japanese {
 #-----------------------------------------------------------------------------
 # Catalogue of Life (ColDP)
 #
-# export.zip から展開した NameUsage.tsv (約3GB) と VernacularName.tsv を
+# ColDP の配布 zip から展開した NameUsage.tsv (約3GB) と VernacularName.tsv を
 # 突き合わせる。和名は VernacularName.tsv の language が jpn の行にあり (99,738件)、
 # taxonID で NameUsage.tsv の学名・階級・status に結び付く。
 #
@@ -3161,7 +3161,7 @@ sub parse_col {
         $srcids{$usrc} = 1 if length $usrc;
         for my $j (@{ $jap{$id} }) { $srcids{ $j->[1] } = 1 if length $j->[1] }
     }
-    my $zip = File::Spec->catfile(dirname($usage), 'export.zip');
+    my $zip = File::Spec->catfile(dirname($usage), $src->{unzip}[0]);
     my $meta = col_read_sources($zip, \%srcids);
 
     my @out;
