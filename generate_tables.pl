@@ -678,7 +678,7 @@ sub cleanup_intermediates {
 #   %validity               ... 有効性。新しさのみ (狭さは考慮しない)
 #-----------------------------------------------------------------------------
 sub merge_directory {
-    my ($dir, $sources) = @_;
+    my ($dir, $sources, $colv, $ncbiv) = @_;
     my @have;
     for my $i (0 .. $#$sources) {
         my $src  = $sources->[$i];
@@ -703,6 +703,27 @@ sub merge_directory {
             push @records, [ $r, $h ];
         }
     }
+
+    # 学名の有効性は Catalogue of Life を基本とする (README の規定)。CoL が知って
+    # いる学名は CoL の判定で上書きし、CoL にない学名でソース間の判定が食い違って
+    # いるものだけ NCBI Taxonomy で決める。和名の有効性はどちらも判定材料を持たない
+    # ので、ソースの新しさによる判定のままにする。
+    my ($n_col, $n_ncbi) = (0, 0);
+    for my $key (keys %validity) {
+        next unless substr($key, 0, 2) eq "s\t";
+        my $name = substr($key, 2);
+        if (exists $colv->{$name}) {
+            $n_col++ if $validity{$key}[0] != $colv->{$name};
+            $validity{$key}[0] = $colv->{$name};
+        }
+        elsif ($validity{$key}[3] && exists $ncbiv->{$name}) {
+            $n_ncbi++ if $validity{$key}[0] != $ncbiv->{$name};
+            $validity{$key}[0] = $ncbiv->{$name};
+        }
+    }
+    logmsg('valid', sprintf('%s: 学名の有効性を Catalogue of Life で %d 件、NCBI Taxonomy で %d 件 上書きしました',
+                            $dir, $n_col, $n_ncbi))
+        if $n_col || $n_ncbi;
 
     # 第2周: 対応付けを決める。2列目に来る名前は、解決後の有効性が 1 のものに
     # 限る。こうしておけば「2列目にシノニムは使わない」が構造として保証される。
@@ -735,9 +756,12 @@ sub valid_of {
 sub update_validity {
     my ($validity, $key, $valid, $year, $order) = @_;
     my $cur = $validity->{$key};
-    if (!$cur) { $validity->{$key} = [ $valid, $year, $order ]; return }
-    return if $cur->[1] > $year;                       # 既存の方が新しい
-    if ($cur->[1] < $year) { $validity->{$key} = [ $valid, $year, $order ]; return }
+    if (!$cur) { $validity->{$key} = [ $valid, $year, $order, 0 ]; return }
+    # 別のソースが違う判定をしたら印を付ける (NCBI Taxonomy を引く条件になる)
+    my $conflict = ($cur->[0] != $valid && $cur->[2] != $order) ? 1 : $cur->[3];
+    if ($cur->[1] > $year) { $cur->[3] = $conflict; return }   # 既存の方が新しい
+    if ($cur->[1] < $year) { $validity->{$key} = [ $valid, $year, $order, $conflict ]; return }
+    $cur->[3] = $conflict;
     return if $cur->[2] < $order;                      # 同年なら定義順の先を優先
     # 同一ソース内では有効名としての出現を優先する
     $cur->[0] = 1 if $valid;
@@ -3438,6 +3462,79 @@ sub parse_jsv_virus {
 }
 
 #-----------------------------------------------------------------------------
+# 外部の分類データベースによる学名の有効性判定 (全ディレクトリ共通)
+#
+# README の規定により、有効名／シノニムの判定は Catalogue of Life を基本とする。
+# CoL が知っている学名は CoL の col:status で決め、CoL にない学名で
+# ソース間の判定が食い違っているものだけ NCBI Taxonomy の name class で決める。
+#
+# 全ディレクトリの中間 TSV から学名を集めてから1回だけ走査する。NameUsage.tsv は
+# 約3GB・1千万行あるので、比較は UTF-8 のバイト列のまま行い decode しない。
+# ファイルが無ければその段を飛ばすので、AllTaxa を取得していなくても動く。
+#-----------------------------------------------------------------------------
+sub collect_scinames {
+    my ($sources) = @_;
+    my %names;
+    for my $src (@$sources) {
+        my $path = intermediate_path($src);
+        next unless -e $path;
+        open my $fh, '<', $path or next;
+        binmode $fh;
+        while (my $line = <$fh>) {
+            my $i = index($line, "\t");
+            next if $i < 1;
+            my $j = index($line, "\t", $i + 1);
+            next if $j < 0;
+            $names{ substr($line, $i + 1, $j - $i - 1) } = 1;
+        }
+        close $fh;
+    }
+    return \%names;
+}
+
+sub external_validity {
+    my ($name_bytes) = @_;
+    my (%col, %ncbi);
+    return (\%col, \%ncbi) unless %$name_bytes;
+
+    my $usage = File::Spec->catfile($basedir, 'AllTaxa', 'NameUsage.tsv');
+    if (-f $usage) {
+        open my $fh, '<', $usage or die "読めません: $usage: $!\n";
+        binmode $fh;
+        my $hdr = <$fh>;
+        while (my $line = <$fh>) {
+            chomp $line;
+            my @f = split /\t/, $line, 11;
+            next unless defined $f[7] && exists $name_bytes->{ $f[7] };
+            my $valid = $COL_INVALID_STATUS{ defined $f[6] ? $f[6] : '' } ? 0 : 1;
+            # 同じ学名が別の提供元で有効名としても載っていれば有効名を採る
+            $col{ $f[7] } = $valid if !exists $col{ $f[7] } || $valid;
+        }
+        close $fh;
+    }
+
+    my $dmp = File::Spec->catfile($basedir, 'NCBITaxonomy', 'names.dmp');
+    if (-f $dmp) {
+        open my $fh, '<', $dmp or die "読めません: $dmp: $!\n";
+        binmode $fh;
+        while (my $line = <$fh>) {
+            chomp $line;
+            my @f = split /\s*\|\s*/, $line, 5;
+            next unless defined $f[1] && exists $name_bytes->{ $f[1] };
+            my $valid = (defined $f[3] && $f[3] eq 'scientific name') ? 1 : 0;
+            $ncbi{ $f[1] } = $valid if !exists $ncbi{ $f[1] } || $valid;
+        }
+        close $fh;
+    }
+
+    # バイト列のキーを文字列のキーに直す
+    my (%colc, %ncbic);
+    $colc{ Encode::decode('UTF-8', $_, Encode::FB_DEFAULT) }  = $col{$_}  for keys %col;
+    $ncbic{ Encode::decode('UTF-8', $_, Encode::FB_DEFAULT) } = $ncbi{$_} for keys %ncbi;
+    return (\%colc, \%ncbic);
+}
+
+#-----------------------------------------------------------------------------
 # 実行 (ファイル末尾に置く。上のサブルーチン群が使う表の代入を先に済ませるため)
 #-----------------------------------------------------------------------------
 printf "対象ディレクトリ: %s\n", $basedir;
@@ -3451,8 +3548,12 @@ for my $src (@selected) {
 
 unless ($dry_run) {
     my @dirs = uniq(map { $_->{dir} } @selected);
+    my @all  = grep { my $d = $_->{dir}; grep { $_ eq $d } @dirs } @SOURCES;
+    # 学名の有効性は Catalogue of Life を基本とする。巨大なファイルを何度も
+    # 走査しないよう、全ディレクトリ分の学名を集めてから1回だけ引く。
+    my ($colv, $ncbiv) = external_validity(collect_scinames(\@all));
     for my $dir (@dirs) {
-        merge_directory($dir, [ grep { $_->{dir} eq $dir } @SOURCES ]);
+        merge_directory($dir, [ grep { $_->{dir} eq $dir } @SOURCES ], $colv, $ncbiv);
     }
     cleanup_intermediates(\@selected) unless $keep;
 }
