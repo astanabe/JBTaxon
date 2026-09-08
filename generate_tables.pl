@@ -82,6 +82,26 @@ my @JAPNAME_NOTES = (
 );
 
 # HTML の実体参照・康熙部首・河川水辺の国勢調査の列構成の各表。
+#-----------------------------------------------------------------------------
+my %GBIF_RANK = (
+    kingdom => 'kingdom', subkingdom => 'subkingdom',
+    phylum => 'phylum', subphylum => 'subphylum',
+    class => 'class', subclass => 'subclass',
+    order => 'order', suborder => 'suborder',
+    superfamily => 'superfamily', family => 'family', subfamily => 'subfamily',
+    tribe => 'tribe', subtribe => 'subtribe',
+    genus => 'genus', subgenus => 'subgenus', section => 'section',
+    species => 'species', subspecies => 'subspecies',
+    variety => 'varietas', form => 'forma',
+    unranked => 'no rank',
+);
+
+# 「doubtful」は疑わしいというだけで無効名ではないので有効名として扱う。
+my %GBIF_INVALID_STATUS = map { $_ => 1 } (
+    'synonym', 'homotypic synonym', 'heterotypic synonym',
+    'proparte synonym', 'misapplied',
+);
+
 # ファイル後方の実行ブロックより前に置かないと代入前に参照されてしまう。
 # HTML の実体参照。数値参照と、情報源に実際に現れる名前付き参照だけを解く。
 my %HTML_ENTITY = (
@@ -564,8 +584,12 @@ sub do_parse {
 # 中間 TSV
 #
 # 内部形式は6列。この1レコードから両方の最終テーブルを導ける。
-#   japname / sciname / japvalid / scivalid / rank / subrank
+#   japname / sciname / japvalid / scivalid / rank / subrank / nos2j
 # japname か sciname が空のレコードはどちらの表にも寄与しないので落とす。
+#
+# nos2j は「有効な和名だが sciname2japname の2列目には使わない」印。
+# JAFList の「サツキマス・アマゴ」のように、分割前の和名を代表として残しつつ
+# 分割後の和名も有効名として和名→学名テーブルに載せたい場合に使う。
 #-----------------------------------------------------------------------------
 sub intermediate_path {
     my ($src) = @_;
@@ -585,13 +609,14 @@ sub write_intermediate {
     my $n = 0;
     my %seen;
     for my $r (@$records) {
-        my ($jap, $sci, $jv, $sv, $rank, $subrank) = @$r;
+        my ($jap, $sci, $jv, $sv, $rank, $subrank, $nos2j) = @$r;
         next unless defined $jap && defined $sci && length $jap && length $sci;
         $rank    = 0 unless defined $rank;
         $subrank = 1 unless defined $subrank && $subrank >= 1;
         $jv = $jv ? 1 : 0;
         $sv = $sv ? 1 : 0;
-        my $line = join("\t", $jap, $sci, $jv, $sv, $rank, $subrank);
+        $nos2j = $nos2j ? 1 : 0;
+        my $line = join("\t", $jap, $sci, $jv, $sv, $rank, $subrank, $nos2j);
         next if $seen{$line}++;
         print $fh "$line\n";
         $n++;
@@ -610,7 +635,7 @@ sub read_intermediate {
         chomp $line;
         next unless length $line;
         my @f = split /\t/, $line, -1;
-        next unless @f == 6;
+        next unless @f == 7;
         push @out, \@f;
     }
     close $fh;
@@ -667,13 +692,13 @@ sub merge_directory {
     my (%adopt_j2s, %adopt_s2j);
     for my $e (@records) {
         my ($r, $h) = @$e;
-        my ($jap, $sci, $jv, $sv, $rank, $subrank) = @$r;
+        my ($jap, $sci, $jv, $sv, $rank, $subrank, $nos2j) = @$r;
         my $jvalid = valid_of(\%validity, "j\t$jap");
         my $svalid = valid_of(\%validity, "s\t$sci");
         my $cand = { sci => $sci, jap => $jap, rank => $rank, subrank => $subrank,
                      src => $h->{src}, order => $h->{order} };
         adopt(\%adopt_j2s, $jap, $cand) if $sv && $svalid;
-        adopt(\%adopt_s2j, $sci, $cand) if $jv && $jvalid;
+        adopt(\%adopt_s2j, $sci, $cand) if $jv && $jvalid && !$nos2j;
     }
 
     my $j2s = write_final($dir, 'japname2sciname', \%adopt_j2s, \%validity, 'j');
@@ -1312,6 +1337,7 @@ sub norm_sciname {
     # 数字が現れた時点で打ち切る。
     my @tok = split /\s+/, $s;
     my @out;
+    my $prev_connector = 0;
     for my $i (0 .. $#tok) {
         my $t = $tok[$i];
         if ($i == 0) {
@@ -1319,8 +1345,18 @@ sub norm_sciname {
             push @out, $t;
             next;
         }
-        if ($t =~ /\A(?:subsp|ssp|var|subvar|f|sect|nothosubsp|nothovar)\.\z/) { push @out, $t; next }
-        if ($t =~ /\A(?:sp|spp|cf|aff)\.\z/)                                   { push @out, $t; next }
+        # 名前の一部ではない語。ここから先は書誌情報なので打ち切る。
+        last if $t =~ /\A(?:sensu|auct\.?|non|nec|complex|group|aggr?\.?|Type|type|of)\z/;
+        if ($t =~ /\A(?:subsp|ssp|var|subvar|f|sect|nothosubsp|nothovar)\.\z/) {
+            push @out, $t; $prev_connector = 1; next;
+        }
+        if ($t =~ /\A(?:sp|spp|cf|aff)\.?\z/) { push @out, $t; $prev_connector = 1; next }
+        # 「sp. 1」「subsp. 2」「sp. L」のように接続語の直後には識別子が来る。
+        # 接続語の直後だけ許すことで、著者名を種小名と取り違えずに済む。
+        if ($prev_connector && $t =~ /\A[0-9]+\z|\A[A-Z][0-9]*\z|\A[a-z]?[0-9]+\z|\A'[A-Za-z][A-Za-z-]*'\z/) {
+            push @out, $t; $prev_connector = 0; next;
+        }
+        $prev_connector = 0;
         if ($t =~ /\Ax\z/)                                                     { push @out, $t; next }
         # 括弧付きの亜属名は属名の直後にしか現れない。それ以外の括弧は著者名。
         if ($i == 1 && $t =~ /\A\([A-Z][A-Za-z-]*\)\z/)                       { push @out, $t; next }
@@ -1456,13 +1492,14 @@ sub add_pair {
     my $sv = exists $opt{scivalid} ? ($opt{scivalid} ? 1 : 0) : 1;
     # 和名欄の末尾に学名がそのまま付いている行があるので落とす
     $_ = strip_trailing_sciname($_, $sci) for ($head, @syn);
+    my $nos2j = $opt{nos2j} ? 1 : 0;
     if (length $head && !is_placeholder($head, $sci)) {
-        push @$out, [ $head, $sci, $jv, $sv, $rank, $subrank ];
+        push @$out, [ $head, $sci, $jv, $sv, $rank, $subrank, $nos2j ];
     }
     # 括弧内の別名は和名シノニム扱い。学名側の有効性はそのまま引き継ぐ。
     for my $s (@syn) {
         next if is_placeholder($s, $sci);
-        push @$out, [ $s, $sci, 0, $sv, $rank, $subrank ];
+        push @$out, [ $s, $sci, 0, $sv, $rank, $subrank, $nos2j ];
     }
 }
 
@@ -1553,15 +1590,103 @@ sub parse_ferngreenlist {
 }
 
 #-----------------------------------------------------------------------------
+# 外部の分類データベースによる有効名の判定
+#
+# 1つの和名に2つの学名が併記されている情報源があるので、どちらが有効名かを
+# 外部データベースに問い合わせて決める。優先順位は
+#   1) GBIF Backbone Taxonomy (AllTaxa/Taxon.tsv) の taxonomicStatus
+#   2) NCBI Taxonomy (NCBITaxonomy/names.dmp) の name class
+# で、どちらでも決められなければ実行末尾の「注意」で報告する。
+#
+# どちらのファイルも巨大なので、候補の属名を並べた正規表現で行を絞ってから
+# 分解する。ファイルが無い場合はその段を飛ばす (取得していなくても動く)。
+#-----------------------------------------------------------------------------
+sub taxonomy_scores {
+    my ($names) = @_;
+    my %want = map { $_ => 1 } @$names;
+    my %gbif = map { $_ => 0 } @$names;
+    my %ncbi = map { $_ => 0 } @$names;
+    return (\%gbif, \%ncbi) unless %want;
+
+    my %genus;
+    for my $n (@$names) { $genus{$1} = 1 if $n =~ /\A(\S+)/ }
+    my $alt = join '|', map { quotemeta } sort keys %genus;
+    my $re  = qr/(?:$alt)[ \t]/;
+
+    my $taxon = File::Spec->catfile($basedir, 'AllTaxa', 'Taxon.tsv');
+    if (-f $taxon) {
+        open my $fh, '<', $taxon or die "読めません: $taxon: $!\n";
+        binmode $fh;
+        my $hdr = <$fh>;
+        while (my $line = <$fh>) {
+            next unless $line =~ $re;
+            chomp $line;
+            my @f = split /\t/, $line, 16;
+            my $canon = Encode::decode('UTF-8', (defined $f[7] ? $f[7] : ''), Encode::FB_DEFAULT);
+            next unless exists $want{$canon};
+            my $status = defined $f[14] ? $f[14] : '';
+            my $score = $GBIF_INVALID_STATUS{$status} ? 1 : 2;
+            $gbif{$canon} = $score if $score > $gbif{$canon};
+        }
+        close $fh;
+    }
+
+    my $dmp = File::Spec->catfile($basedir, 'NCBITaxonomy', 'names.dmp');
+    if (-f $dmp) {
+        open my $fh, '<', $dmp or die "読めません: $dmp: $!\n";
+        binmode $fh;
+        while (my $line = <$fh>) {
+            next unless $line =~ $re;
+            chomp $line;
+            my @f = split /\s*\|\s*/, $line;
+            my $nm = Encode::decode('UTF-8', (defined $f[1] ? $f[1] : ''), Encode::FB_DEFAULT);
+            next unless exists $want{$nm};
+            my $class = defined $f[3] ? $f[3] : '';
+            my $score = $class eq 'scientific name' ? 2 : 1;
+            $ncbi{$nm} = $score if $score > $ncbi{$nm};
+        }
+        close $fh;
+    }
+    return (\%gbif, \%ncbi);
+}
+
+# 候補のうち有効名を1つ選ぶ。決められなければ ($cands->[0], 0) を返す。
+sub choose_valid_sciname {
+    my ($cands, $gbif, $ncbi) = @_;
+    return ($cands->[0], 1) if @$cands == 1;
+    for my $tbl ($gbif, $ncbi) {
+        my @sorted = sort { $tbl->{$b} <=> $tbl->{$a} } @$cands;
+        next if $tbl->{ $sorted[0] } == 0;
+        next if $tbl->{ $sorted[0] } == $tbl->{ $sorted[1] };
+        return ($sorted[0], 1);
+    }
+    return ($cands->[0], 0);
+}
+
+#-----------------------------------------------------------------------------
 # 日本産魚類全種目録 (xlsx)
 #
 # 目の列は1セルに「和名\n学名」、科の列と Family の列はそれぞれ1セルに
 # 「科\n亜科」が改行で入る。sheet2 (日本産から削除) は列がずれているので使わない。
 # 共有文字列にルビ (<rPh>) が 16,903 個あるが read_xlsx が除去する。
+#
+# この情報源に固有の扱いが3つある。
+#   - 学名の欄に2つの学名が入ることがある。セル内で改行して並べる形と
+#     「属名 (属名) 種小名」の形の2通りで、後者の括弧付きの形は出力しない。
+#     どちらが有効名かは taxonomy_scores() で外部データベースに問い合わせる。
+#   - 「X型Z」「～X型」という和名からは、型の指定を外した和名も出す (japvalid=0)。
+#     「太平洋系陸封型イトヨ」→「イトヨ」、「ヤマトシマドジョウA型」→「ヤマトシマドジョウ」。
+#     型の直前が英数字1文字の場合だけ「～X型」とみなす (「トミヨ属雄物型」は分割しない)。
+#   - 「サツキマス・アマゴ」のように「・」で2つの和名を併記した行は、分割前の和名に
+#     加えて分割後の和名も有効名として出す。ただし分割後の和名は
+#     sciname2japname の2列目には使わない (nos2j)。
+# いずれもこの情報源に限った規則である。Wikidata の「ロベリア・ラキシフローラ」や
+# ウイルスの「A型肝炎ウイルス」に同じ規則を当てると壊れるため他へ広げないこと。
 #-----------------------------------------------------------------------------
 sub parse_jaflist {
     my ($src, $paths) = @_;
     my @out;
+    my @rows;
     for my $path (@$paths) {
         my $first = 1;
         read_xlsx($path, 0, sub {
@@ -1580,10 +1705,97 @@ sub parse_jaflist {
                 add_pair(\@out, $j[1], $s[1], rk('subfamily'), 1) if @j > 1 && @s > 1;
             }
             return unless length trim($sci);
-            add_pair(\@out, $jap, $sci, undef, undef);
+            my @cands = jaflist_scinames($sci);
+            return unless @cands;
+            push @rows, [ $jap, \@cands ];
         }, merge => 1);
     }
+
+    my %need;
+    for my $r (@rows) {
+        next unless @{ $r->[1] } > 1;
+        $need{$_} = 1 for @{ $r->[1] };
+    }
+    my ($gbif, $ncbi) = taxonomy_scores([ sort keys %need ]);
+
+    for my $r (@rows) {
+        my ($jap, $cands) = @$r;
+        my @japnames = jaflist_japnames($jap);
+        # 和名のない行は出力に寄与しないので、決められなくても通知しない
+        @japnames = grep { !is_placeholder($_->[0], undef) } @japnames;
+        next unless @japnames;
+        my ($valid, $decided) = choose_valid_sciname($cands, $gbif, $ncbi);
+        note($src, sprintf('有効名を決められませんでした (%s を採用): %s',
+                           $valid, join(' / ', @$cands)))
+            if !$decided && @$cands > 1;
+        my ($rank, $subrank) = rank_from_sciname($valid);
+        for my $j (@japnames) {
+            my ($name, $jv, $nos2j) = @$j;
+            add_pair(\@out, $name, $valid, $rank, $subrank,
+                     japvalid => $jv, nos2j => $nos2j);
+            for my $alt (@$cands) {
+                next if $alt eq $valid;
+                add_pair(\@out, $name, $alt, rank_from_sciname($alt),
+                         japvalid => $jv, scivalid => 0, nos2j => $nos2j);
+            }
+        }
+    }
     return \@out;
+}
+
+# 学名の欄から候補の学名を取り出す。
+sub jaflist_scinames {
+    my ($cell) = @_;
+    my @lines;
+    for my $l (split /\n/, $cell) {
+        $l = trim($l);
+        next unless length $l;
+        # 学名で始まらない行は前の行の続き (著者名や年が折り返したもの)。
+        if ($l =~ /\A[A-Z][a-z]/ ) { push @lines, $l }
+        elsif (@lines)              { $lines[-1] .= " $l" }
+    }
+    my (@out, %seen);
+    for my $l (@lines) {
+        my @names = ($l);
+        # 「属名 (属名) 種小名」は2つの属名の併記。括弧付きの形は出力しない。
+        if ($l =~ /\A([A-Z][A-Za-z-]*)\s+\(([A-Z][A-Za-z-]*)\)\s+(.+)\z/) {
+            @names = ("$1 $3");
+            push @names, "$2 $3" if $2 ne $1;
+        }
+        for my $n (@names) {
+            my $norm = norm_sciname($n);
+            next unless length $norm;
+            push @out, $norm unless $seen{$norm}++;
+        }
+    }
+    return @out;
+}
+
+# 和名の欄から [和名, japvalid, nos2j] の並びを作る。
+sub jaflist_japnames {
+    my ($cell) = @_;
+    my $jap = norm_japname($cell);
+    return () unless length $jap;
+    my @out = ( [ $jap, 1, 0 ] );
+
+    # 「～X型」(型の直前が英数字1文字) と「X型Z」から型指定を外した和名
+    my $base;
+    if ($jap =~ /\A(.+?)\s*[0-9A-Za-z\x{FF10}-\x{FF19}\x{FF21}-\x{FF3A}\x{FF41}-\x{FF5A}]\s*型\z/) {
+        $base = trim($1);
+    }
+    elsif ($jap =~ /\A.*型(.+)\z/) {
+        $base = trim($1);
+    }
+    push @out, [ $base, 0, 0 ] if defined $base && length $base && $base ne $jap;
+
+    # 「サツキマス・アマゴ」のように2つの和名を併記したもの
+    if ($jap =~ /・/) {
+        my @parts = grep { length } map { trim($_) } split /・/, $jap;
+        if (@parts >= 2 && !grep { !looks_japanese($_) || length($_) < 2 } @parts) {
+            push @out, [ $_, 1, 1 ] for @parts;
+        }
+    }
+    return @out;
 }
 
 #-----------------------------------------------------------------------------
@@ -2823,25 +3035,7 @@ sub despace_japanese {
 # Taxon.tsv は巨大なので :encoding(UTF-8) を通さずバイト列のまま行を読み、
 # 必要な taxonID の行だけを split して該当フィールドを decode する。
 # シノニムの有効名は acceptedNameUsageID の先にあるので2周する。
-#-----------------------------------------------------------------------------
-my %GBIF_RANK = (
-    kingdom => 'kingdom', subkingdom => 'subkingdom',
-    phylum => 'phylum', subphylum => 'subphylum',
-    class => 'class', subclass => 'subclass',
-    order => 'order', suborder => 'suborder',
-    superfamily => 'superfamily', family => 'family', subfamily => 'subfamily',
-    tribe => 'tribe', subtribe => 'subtribe',
-    genus => 'genus', subgenus => 'subgenus', section => 'section',
-    species => 'species', subspecies => 'subspecies',
-    variety => 'varietas', form => 'forma',
-    unranked => 'no rank',
-);
 
-# 「doubtful」は疑わしいというだけで無効名ではないので有効名として扱う。
-my %GBIF_INVALID_STATUS = map { $_ => 1 } (
-    'synonym', 'homotypic synonym', 'heterotypic synonym',
-    'proparte synonym', 'misapplied',
-);
 
 sub parse_gbif {
     my ($src, $paths) = @_;

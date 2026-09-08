@@ -53,6 +53,11 @@ my $QLEVER_URL   = 'https://qlever.dev/api/wikidata';
 #   sparql  ... SPARQL クエリファイルを POST して結果を保存する
 #   manual  ... 自動取得せず、未配置を案内するだけ
 #
+# file には untar を添えられる。[書庫名, 展開後に存在するはずのファイル] を書くと
+# 取得直後に tar で展開する。手動配置分の zip は fetch_data.pl の実行後に置かれる
+# ので generate_tables.pl が展開するが、これは自分でダウンロードした書庫なので
+# ここで展開してよい。
+#
 # Insects/ はサブディレクトリを作らずフラットに配置する。generate_tables.pl は
 # ファイル名でソースを判別するため、ここでのリネーム後の名前がソース識別子を
 # 兼ねる契約になっている。安易に変更しないこと。
@@ -215,6 +220,16 @@ my @SOURCES = (
         type => 'seaweed',
         desc => '日本産海藻リスト',
         count => '57',
+    },
+    {   dir  => 'NCBITaxonomy',
+        type => 'file',
+        # 種名チェックリストではなく、学名の有効性を判定するための参照データ。
+        # generate_tables.pl が1つの和名に複数の学名が併記された行を解決するのに
+        # 使う (GBIF Backbone Taxonomy で決まらなかったときの2段目)。
+        desc  => 'NCBI Taxonomy taxdump (学名の有効性判定用)',
+        files => [ [ 'https://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz',
+                     'taxdump.tar.gz' ] ],
+        untar => [ 'taxdump.tar.gz', 'names.dmp' ],
     },
     {   dir  => 'Viruses',
         type => 'file',
@@ -394,6 +409,29 @@ sub do_file {
         my ($url, $name) = @$ent;
         fetch($url, File::Spec->catfile($dir, $name));
     }
+    untar($src, $dir) if $src->{untar};
+}
+
+# tar 書庫を展開する。展開済み (期待するファイルがある) ならスキップし、
+# --force で展開し直す。
+sub untar {
+    my ($src, $dir) = @_;
+    my ($archive, $want) = @{ $src->{untar} };
+    my $wantpath = File::Spec->catfile($dir, $want);
+    return if -e $wantpath && !$force;
+    my $path = File::Spec->catfile($dir, $archive);
+    unless (-f $path) {
+        logmsg('info', relname($path) . ' がないので展開しません');
+        return;
+    }
+    return if $dry_run;
+    my $rc = system('tar', '-x', '-z', '-f', $path, '-C', $dir);
+    if ($rc == 0) {
+        logmsg('untar', sprintf('%s -> %s', relname($path), relname($dir)));
+        return;
+    }
+    record_failure($archive, relname($path),
+                   $rc == -1 ? "tar を実行できません: $!" : sprintf('tar exit %d', $rc >> 8));
 }
 
 #-----------------------------------------------------------------------------
@@ -631,6 +669,7 @@ sub list_sources {
         printf "%-20s %-8s %-8s %s\n", $src->{dir}, $src->{type}, $count, $src->{desc};
         if ($src->{type} eq 'file') {
             printf "  %s <- %s\n", $_->[1], $_->[0] for @{ $src->{files} };
+            printf "  展開: %s -> %s\n", @{ $src->{untar} } if $src->{untar};
         }
         elsif ($src->{type} eq 'manual') {
             printf "  %s\n", (@{ $src->{files} } ? join(', ', @{ $src->{files} })

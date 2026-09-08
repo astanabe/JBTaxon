@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 情報源となる生物種名チェックリストの一部は改変・再配布が禁止されている。そのため **JBTaxon の成果物（DB や辞書ファイル）自体をリポジトリで配布することはできない**。配布するのは「各ユーザーがローカルで成果物を生成するためのスクリプト」だけ。生データや生成物をリポジトリにコミットする変更は、この制約に抵触するため行わないこと。
 
-`.gitignore` がこれを機械的に担保している。分類群ディレクトリの中身（`/AllTaxa/*` など16件）、`*.part`、生成物（`/jbtaxon_*.sqlite3`・`/yomi2japname_*.tsv`・`/yomi2sciname_*.tsv`）を除外し、`!/<分類群>/README.md` で各ディレクトリの `README.md` だけを追跡する。**例外は `!/AllTaxa/wikidata.rq`**（生データではなく Wikidata 取得用の SPARQL クエリなので追跡する）。**パターンは必ず `/<分類群>/*` の形で書くこと**（`/AllTaxa/` のようにディレクトリ自体を除外すると git が中に降りなくなり、`README.md` を再包含できない）。新しい分類群ディレクトリを追加したときは、除外と再包含の2組を両方追加する。生データを置いた状態でも `git add -A` で入るのはスクリプトと `README.md` だけになる。
+`.gitignore` がこれを機械的に担保している。分類群ディレクトリの中身（`/AllTaxa/*` など16件）と `/NCBITaxonomy/*`、`*.part`、生成物（`/jbtaxon_*.sqlite3`・`/yomi2japname_*.tsv`・`/yomi2sciname_*.tsv`）を除外し、`!/<分類群>/README.md` で各ディレクトリの `README.md` だけを追跡する。**例外は `!/AllTaxa/wikidata.rq`**（生データではなく Wikidata 取得用の SPARQL クエリなので追跡する）。**パターンは必ず `/<分類群>/*` の形で書くこと**（`/AllTaxa/` のようにディレクトリ自体を除外すると git が中に降りなくなり、`README.md` を再包含できない）。新しい分類群ディレクトリを追加したときは、除外と再包含の2組を両方追加する。生データを置いた状態でも `git add -A` で入るのはスクリプトと `README.md` だけになる。
 
 ## パイプライン構造
 
@@ -71,6 +71,7 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 - 巡回系（NARO・蝶類便覧・海藻）は、**レスポンスではなくディスク上のファイルを読んで**次に辿る URL を決める。再開時にスキップされたページの内容はレスポンスとして手元に来ないため。
 - 失敗しても即座に中断せず最後まで走り切り、失敗一覧を末尾に再掲する（約510件・45分の処理で1件の失敗のために全体をやり直すのは非現実的なため）。ダウンロード失敗が1件でもあれば exit 1、手動未配置は警告のみで exit 0。
 - ソース定義は `@SOURCES` の1テーブルに宣言的にまとめてある。URL 固定方針の保守がこのテーブルの編集だけで完結するのが狙い。`type` は `file` / `naro` / `binran` / `seaweed` / `sparql` / `manual` の6種。
+- `file` には `untar` を添えられる。`[書庫名, 展開後に存在するはずのファイル]` を書くと取得直後に `tar` で展開する。**書庫の展開を `fetch_data.pl` が行うのは NCBI taxdump だけ**。手動配置分の zip は `fetch_data.pl` の実行後に置かれるので `generate_tables.pl` の仕事だが、これは自分でダウンロードした書庫なので取得直後に展開してよい。
 - `sparql` は `AllTaxa/wikidata.rq` を QLever (`https://qlever.dev/api/wikidata`) へ POST して CSV を受け取る種別。**追加の curl オプションは `fetch()` の `extra` 引数で渡す**（`fetch()` 以外で curl を呼ばない規則を守るため）。`Accept: text/csv` を付けないと `"大腸菌"@ja` のような RDF 項形式で返る。WDQS (query.wikidata.org) は60秒制限で完走しない。
 - CLI: `--dir` / `--only`（複数指定可）/ `--force` / `--list` / `--dry-run` / `--help`。`--list` と `--dry-run` は通信しない。
 - `manual` 種別は一切ダウンロードせず、期待パスの存在を確認して未配置のものを実行末尾にまとめて案内する。
@@ -86,7 +87,7 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 - **`use utf8` + `Encode` で文字列として扱う。** `fetch_data.pl` はバイト列のままだが、本スクリプトは UTF-8・cp932・PDF 抽出テキストが混ざるので方針が違う。出力は `binmode $fh, ':encoding(UTF-8)'`。
 - **`read_html` は die させない。** UTF-8 として厳密に解釈できなければ cp932 を試し、それも駄目なら `FB_DEFAULT` で読む。海藻の4ファイル（`Brown/Asterocladales.html` / `Desmarestiales.html` / `Dictyotales.html` / `Discosporangiales.html`）は charset の指定がなく中身が cp932 なので、この経路がないと和名が化ける。
 - **NFKC は使わない。** `Itô` / `Bouchè` / `Váňa` を壊す。リガチャ (`ﬁ ﬂ ﬀ`) と康熙部首だけを明示的な置換表 (`%CHAR_FIXUP` / `%KANGXI`) で直す。
-- 中間出力はソース別に `<分類群>/.jbtaxon/<ソースID>.tsv`（6列 `japname / sciname / japvalid / scivalid / rank / subrank`）。既定では最後に削除し、`--keep` で残す。`.gitignore` の `/<分類群>/*` に既にマッチするのでパターンの追加は不要。
+- 中間出力はソース別に `<分類群>/.jbtaxon/<ソースID>.tsv`（7列 `japname / sciname / japvalid / scivalid / rank / subrank / nos2j`）。`nos2j` は「有効な和名だが `sciname2japname` の2列目には使わない」印で、分割前の和名を代表に残したまま分割後の和名も和名→学名テーブルに載せるために使う。既定では最後に削除し、`--keep` で残す。`.gitignore` の `/<分類群>/*` に既にマッチするのでパターンの追加は不要。
 - **ファイル末尾の「実行」ブロックより前にサブルーチンが使う `my` の表を置くこと。** 実行文がファイル途中にあると、その後ろで宣言された `my %TABLE = (...)` の代入前に参照してしまい、黙って空の表を使う。この事故を防ぐため実行文はすべてファイル末尾に集めてある。
 - 失敗しても即座に中断せず最後まで走り切り、失敗一覧を末尾に再掲する。exit は `$n_fail ? 1 : 0`。
 - CLI: `--dir` / `--only`（分類群、複数指定可）/ `--source`（ソースID、複数指定可）/ `--force` / `--keep` / `--version` / `--builddate` / `--list` / `--dry-run` / `--help`。`--list` と `--dry-run` はパースしない。
@@ -111,6 +112,13 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 - **`Mammals` は世界哺乳類標準和名リスト**（日本産ではない）。zip を自動展開し、PDF ではなく xlsx を使う。ヘッダ2行・データは3行目から・5,526行目以降の付録ブロック（1,288行）は除外。
 - **`Hattoria 9 (9_53.pdf)` の §5 注釈からはシノニムを取らない。** 注釈は日本語の散文で、機械的に切り出すと誤った名前の対応を作る。本体は有効名のみなので `scivalid` は常に 1。
 - **`Seaweeds/Red/Erythropeltidales.html` は情報源側の 404 で存在しない。** 入力ファイルの欠損を許容すること。
+- **魚類 (JAFList) だけの規則が3つある**（他の情報源に広げてはならない）。
+  - 学名の欄に2つの学名が入ることがある。セル内で改行して並べる形と「属名 (属名) 種小名」の形の2通りで、**括弧付きの形そのものは出力しない**。学名で始まらない行は前の行の続き（折り返した年号など）。
+  - 「X型Z」「～X型」の和名からは型の指定を外した和名も出す（`japvalid=0`）。「太平洋系陸封型イトヨ」→「イトヨ」、「ヤマトシマドジョウA型」→「ヤマトシマドジョウ」。**型の直前が英数字1文字のときだけ「～X型」とみなす**（「トミヨ属雄物型」を壊さないため）。
+  - 「サツキマス・アマゴ」のように「・」で2つの和名を併記した行は、分割前に加えて分割後の和名も有効名として出し、分割後には `nos2j` を立てる。
+  Wikidata の「ロベリア・ラキシフローラ」やウイルスの「A型肝炎ウイルス」に同じ規則を当てると壊れるので、**この3つは JAFList のパーサの中だけに置く**。
+- **1つの和名に複数の学名が併記されているときの有効名の判定**は `taxonomy_scores()` が外部データベースに問い合わせる。(1) GBIF Backbone Taxonomy (`AllTaxa/Taxon.tsv`) の `taxonomicStatus`、(2) NCBI Taxonomy (`NCBITaxonomy/names.dmp`) の name class（`scientific name` なら有効名）の順で、どちらでも決まらなければ実行末尾の「注意」で報告する。どちらのファイルも巨大なので候補の属名を並べた正規表現で行を絞ってから分解し、ファイルが無ければその段を飛ばす。
+- **`norm_sciname` は接続語の直後だけ識別子を許す。** `sp. 1` / `subsp. 2` / `sp. L` / `sp. 'yamato'` を残しつつ、著者名を種小名と取り違えないため。`sensu` `auct.` `non` `nec` `complex` `group` `Type` `of` は名前の一部ではないのでそこで打ち切る。
 - **GBIF** — `backbone.zip` を展開した `Taxon.tsv`（約2.2GB）と `VernacularName.tsv` を突き合わせる。巨大なので **`:encoding(UTF-8)` を通さずバイト列で行を読み、1列目の taxonID が必要な集合にある行だけ split して該当フィールドを decode する**。シノニムの有効名は `acceptedNameUsageID` の先にあるので Taxon.tsv を2周する。`language` が `ja` の和名 27,558件のうち約6,800件は「Tenjikuzame」のようなローマ字表記で、`is_placeholder` が日本語文字を含まない名前として落とす（これは意図した挙動）。
 - **Wikidata** — `ranks_ja`（種・属・科…）から rank を決め、`aliases`（skos:altLabel）と `commons`（P1843）を和名シノニムとして出す。有効名／シノニムの情報を持たないので学名は常に有効名。
 - **ウイルス** — ICTV の Species 欄には著者名が付かないので **`add_pair` の `rawsci` オプションで学名をそのまま使う**。`norm_sciname` の「名前らしいトークンだけ採る」規則は `Alfamovirus AMV` や `Duamitovirus crpa1` の種小名を切り落としてしまう。和名の列名は2ファイルで違う（`ウイルス和名` と `和名`）のでヘッダから決める。
