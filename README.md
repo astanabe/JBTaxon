@@ -243,18 +243,18 @@ yomi    japname
 ### 和名→学名テーブル (japname2sciname_VERSION_BUILDDATE.tsv)
 
 ```
-japname    sciname    japvalid    rank    subrank    source    sourceauthor    sourceurl
+japname    sciname    japvalid    rank    subrank    sourcetitle    sourceauthor    sourceurl
 ```
 
-実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、scinameが同一でjapnameが異なる行が生じる。scinameにはシノニムは使用しない。japvalidは和名が有効名かどうかを示す(0はinvalidで1はvalid)。和名がシノニムなら0になる。rank・subrankについては後述。sourceurlは上記URLが出力される。sourceはソースのタイトル。sourceauthorは作者名。
+実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、scinameが同一でjapnameが異なる行が生じる。scinameにはシノニムは使用しない。japvalidは和名が有効名かどうかを示す(0はinvalidで1はvalid)。和名がシノニムなら0になる。rank・subrankについては後述。sourceurlは上記URLが出力される。sourcetitleはソースのタイトル。sourceauthorは作者名。
 
 ### 学名→和名テーブル (sciname2japname_VERSION_BUILDDATE.tsv)
 
 ```
-sciname    japname    scivalid    rank    subrank    source    sourceauthor    sourceurl
+sciname    japname    scivalid    rank    subrank    sourcetitle    sourceauthor    sourceurl
 ```
 
-実際にはスペースではなくタブを区切りとして使用する。学名シノニムがある場合、japnameが同一でscinameが異なる行が生じる。japnameにはシノニムは使用しない。scivalidは学名が有効名かどうかを示す(0はinvalidで1はvalid)。学名がシノニムなら0になる。rank・subrankについては後述。sourceurlは上記URLが出力される。sourceはソースのタイトル。sourceauthorは作者名。
+実際にはスペースではなくタブを区切りとして使用する。学名シノニムがある場合、japnameが同一でscinameが異なる行が生じる。japnameにはシノニムは使用しない。scivalidは学名が有効名かどうかを示す(0はinvalidで1はvalid)。学名がシノニムなら0になる。rank・subrankについては後述。sourceurlは上記URLが出力される。sourcetitleはソースのタイトル。sourceauthorは作者名。
 
 ### 和名読み→和名辞書 (yomi2japname_VERSION_BUILDDATE.tsv)
 
@@ -262,7 +262,7 @@ sciname    japname    scivalid    rank    subrank    source    sourceauthor    s
 yomi    japname    pos    comment
 ```
 
-実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、和名シノニムの読みから有効名の和名を返す行と、和名シノニムの読みから和名シノニムを返す行も出力される。posはデフォルトでは常に`名詞`。`--for=mozc-user`のとき、`短縮読み`になる。commentにはsource, sourceauthor, sourceurlが含まれる。
+実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、和名シノニムの読みから有効名の和名を返す行と、和名シノニムの読みから和名シノニムを返す行も出力される。posはデフォルトでは常に`名詞`。`--for=mozc-user`のとき、`短縮読み`になる。commentにはsourcetitle, sourceauthor, sourceurlが「sourcetitle (sourceurl) by sourceauthor」として含まれる。
 
 `--for=mozc-system`のとき、出力フォーマットは以下に変更される。
 
@@ -278,7 +278,7 @@ yomi    lid    rid    cost    japname
 yomi    sciname    pos    comment
 ```
 
-実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、和名シノニムの読みから有効名の学名を返す行も出力される。学名のシノニムは出力されない。posはデフォルトでは常に`名詞`。`--for=mozc-user`のとき、`短縮読み`になる。commentにはsource, sourceauthor, sourceurlが含まれる。
+実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、和名シノニムの読みから有効名の学名を返す行も出力される。学名のシノニムは出力されない。posはデフォルトでは常に`名詞`。`--for=mozc-user`のとき、`短縮読み`になる。commentにはsourcetitle, sourceauthor, sourceurlが「sourcetitle (sourceurl) by sourceauthor」として含まれる。
 
 `--for=mozc-system`のとき、出力フォーマットは以下に変更される。
 
