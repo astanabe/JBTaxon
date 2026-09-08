@@ -230,6 +230,14 @@ yomi    japname
 
 - https://tonysharks.com/Seaweeds_list/Seaweed_list_top.html
 
+### ウイルス (Viruses)
+
+#### ウイルス種名・英名・和名対応リスト (日本ウイルス学会)
+
+以下のURLで提供されているExcelファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+
+- https://jsv.umin.jp/news/news241125.html
+
 ## ファイルフォーマット
 
 ### 和名→学名テーブル (japname2sciname_VERSION_BUILDDATE.tsv)
