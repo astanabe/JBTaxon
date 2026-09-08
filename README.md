@@ -50,7 +50,7 @@ yomi    japname
 
 - https://www.nilim.go.jp/lab/fbg/ksnkankyo/mizukokuweb/system/seibutsuListfile.htm
 
-#### Catalogue of Life (2026-08-26 XR) (Catalogue of Life Foundation)
+#### Catalogue of Life (2026-08-26 XR) (Olaf Bánki et al.)
 
 以下のURLから取得できるzipファイルがデータファイルを含む配布ファイルです。`fetch_data.pl`が実行されると自動的に`AllTaxa/2026-08-26_xr_coldp.zip`としてダウンロードされます。
 
