@@ -1,0 +1,62 @@
+# ---------------------------------------------------------------------------
+# 生物の学名・和名対応表を Wikidata から抽出する
+#
+#   出力  : 1 分類群 1 行
+#   件数  : 約 44,000 行 / 約 5 MB（2026-09 時点）
+#   実行  : curl -s -X POST https://qlever.dev/api/wikidata \
+#             -H "Content-Type: application/sparql-query" \
+#             -H "Accept: text/csv" \
+#             --data-binary @wikidata.rq -o wikidata.csv
+#
+#   ※ Accept: text/csv だと値がそのまま入る。
+#      text/tab-separated-values は "大腸菌"@ja のような RDF 項形式で返る。
+#   ※ WDQS (query.wikidata.org) では 60 秒制限により完走しない。
+#      QLever (https://qlever.dev/wikidata) を使用すること。
+#
+#   データ出典: Wikidata (https://www.wikidata.org/) / Wikidata contributors
+#               CC0 1.0 Universal
+# ---------------------------------------------------------------------------
+
+PREFIX wd:   <http://www.wikidata.org/entity/>
+PREFIX wdt:  <http://www.wikidata.org/prop/direct/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+SELECT ?qid ?sci ?ja
+       (GROUP_CONCAT(DISTINCT ?rank;    SEPARATOR="|") AS ?ranks)
+       (GROUP_CONCAT(DISTINCT ?rank_ja; SEPARATOR="|") AS ?ranks_ja)
+       (GROUP_CONCAT(DISTINCT ?parent;  SEPARATOR="|") AS ?parents)
+       (GROUP_CONCAT(DISTINCT ?alias;   SEPARATOR="|") AS ?aliases)
+       (GROUP_CONCAT(DISTINCT ?common;  SEPARATOR="|") AS ?commons)
+WHERE {
+  # --- 必須: 学名と和名 -----------------------------------------------------
+  ?item wdt:P225 ?sci .                               # P225 分類群名（学名）
+  ?item rdfs:label ?ja . FILTER(LANG(?ja) = "ja")     # 日本語ラベル＝和名
+
+  # 日本語ラベル欄にラテン語名だけが入っている項目を除外
+  # （例: "Aname vernonorum", "Lilium albanicum"）。約 950 件が落ちる。
+  FILTER(REGEX(?ja, "[\\p{Hiragana}\\p{Katakana}\\p{Han}]"))
+
+  BIND(STRAFTER(STR(?item), "http://www.wikidata.org/entity/") AS ?qid)
+
+  # --- 分類階級 -------------------------------------------------------------
+  OPTIONAL {
+    ?item wdt:P105 ?rank_item .                       # P105 分類階級
+    BIND(STRAFTER(STR(?rank_item), "http://www.wikidata.org/entity/") AS ?rank)
+    OPTIONAL { ?rank_item rdfs:label ?rank_ja . FILTER(LANG(?rank_ja) = "ja") }
+  }
+
+  # --- 親分類群（QID のみ。不要なら OPTIONAL ブロックごと削除可） -----------
+  OPTIONAL {
+    ?item wdt:P171 ?parent_item .                     # P171 親分類群
+    BIND(STRAFTER(STR(?parent_item), "http://www.wikidata.org/entity/") AS ?parent)
+  }
+
+  # --- 別名・通称（表記揺れの供給源。未フィルタ） ---------------------------
+  OPTIONAL { ?item skos:altLabel ?alias  . FILTER(LANG(?alias)  = "ja") }
+  OPTIONAL { ?item wdt:P1843    ?common . FILTER(LANG(?common) = "ja") }
+}
+# GROUP BY を ?qid ?sci ?ja に絞ることで 1 分類群 1 行にする。
+# これをしないと P171 を複数持つ項目（約 1,400 件）等で行が重複する。
+GROUP BY ?qid ?sci ?ja
+ORDER BY ?qid

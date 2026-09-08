@@ -36,6 +36,9 @@
 !/Tanaids/README.md
 !/VascularPlants/README.md
 
+# Wikidataメタデータ取得クエリファイルは追跡する
+!/AllTaxa/wikidata.rq
+
 # fetch_data.pl がダウンロード中に使う一時ファイル
 *.part
 

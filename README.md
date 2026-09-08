@@ -23,6 +23,8 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
   - 和名→学名および学名→和名テーブルのTSVから単一の`jbtaxon_VERSION_BUILDDATE.sqlite3`を生成する
 4. `generate_dictionary.pl`
   - 和名→学名および学名→和名テーブルのTSVから和名読み→和名および和名読み→学名を日本語入力IMEで実現する単一の辞書ファイルTSVを生成する
+5. `add_to_yomi.pl`
+  - 和名→学名テーブルから、既存の`yomi.tsv`にyomiデータが存在しないためyomiを自動生成できない和名を検出して`yomi.tsv`の末尾にyomi空欄でjapnameを追加する
 
 なお、種より上位の高次分類群(科や門など)や、種より下位の低次分類群(亜種・品種など)の和名・学名も生データファイルに含まれていれば出力します。
 
@@ -34,17 +36,35 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
 yomi    japname
 ```
 
+`generate_tables.pl`実行後に`add_to_yomi.pl`を実行することで、和名→学名テーブルから、既存の`yomi.tsv`にyomiデータが存在しないためyomiを自動生成できない和名を検出して`yomi.tsv`の末尾にyomi空欄でjapnameが追加されます。筆者が手動でそこにyomiを追加して本リポジトリの`yomi.tsv`を更新していきます。
+
 ## 種名チェックリストについて
 
 以下にソースとなるチェックリストを全て掲載します。なお、複数のソース間で衝突する場合は、(1) より狭い分類群のソースを優先、(2) 次いでより新しいソースを優先します。ただし、有効名とシノニムの判定には、「より新しいソースか」だけを用い、より狭い分類群のソースかどうかは考慮しません。
 
 ### 全体 (AllTaxa)
 
+#### 河川水辺の国勢調査のための生物リスト (国土交通省 国土技術政策総合研究所)
+
 以下のURLで提供されているExcelファイルがデータファイルです(令和元年度以降の「全生物種」)。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://www.nilim.go.jp/lab/fbg/ksnkankyo/mizukokuweb/system/seibutsuListfile.htm
 
+#### GBIF Backbone Taxonomy (GBIF Secretariat)
+
+以下のURLで提供されているzipファイルがデータファイルを含む配布ファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+
+- https://doi.org/10.15468/39omei
+
+#### Wikidata (Wikidata contributors)
+
+以下のURLで提供されているデータのメタデータを使用します。`fetch_data.pl`が実行されると`AllTaxa/wikidata.rq`をクエリとして[QLever](https://qlever.dev/wikidata)からメタデータを取得してCSVファイル`AllTaxa/wikidata.csv`として保存します。
+
+- https://www.wikidata.org/
+
 ### 哺乳類 (Mammals)
+
+#### 世界哺乳類標準和名リスト (川田 伸一郎・岩佐 真宏・福井 大・新宅 勇太・天野 雅男・下稲葉 さやか・樽 創・姉崎 智子・鈴木 聡・押田 龍夫・横畑 泰志)
 
 利用規約に同意する必要があるため、`fetch_data.pl`でダウンロードできません。以下のURLから手動でダウンロードして`Mammals`ディレクトリ内に配置して下さい(配布されているzipファイルのままで構いません。zipファイルは自動的に展開します)。
 
@@ -52,11 +72,15 @@ yomi    japname
 
 ### 爬虫類・両生類 (Reptiles_Amphibians)
 
+#### 日本産爬虫両生類標準和名リスト (日本爬虫両棲類学会)
+
 以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://herpetology.jp/wamei/index_j.php
 
 ### 魚類 (Fishes)
+
+#### 日本産魚類全種目録 (本村 浩之)
 
 以下のURLで提供されているExcelファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
@@ -64,21 +88,25 @@ yomi    japname
 
 ### 昆虫 (Insects)
 
+##### 昆虫情報データベース (国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット)
+
 以下のURLとリンク先のHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://insect-web.rad.naro.go.jp/flame/tree
 
-また、以下のURLで提供されているExcelファイルがデータファイルです。Google Driveからは自動ダウンロードが禁止されているので、手動でダウンロードして`Insects`ディレクトリ内に配置して下さい(一括ダウンロードzipファイルでも各目のxlsxファイルでもどちらでも構いません。zipファイルは自動的に展開します)。
+#### 滋賀県昆虫目録2025 (滋賀県昆虫目録作成グループ)
+
+以下のURLで提供されているExcelファイルがデータファイルです。Google Driveからは自動ダウンロードが禁止されているので、手動でダウンロードして`Insects`ディレクトリ内に配置して下さい(一括ダウンロードzipファイルでも各目のxlsxファイルでもどちらでも構いません。zipファイルは自動的に展開します)。
 
 - https://sites.google.com/view/shigainsect/
 
-#### List-MJ 日本産蛾類総目録
+#### List-MJ 日本産蛾類総目録 (神保 宇嗣)
 
 以下のURLで提供されているExcelファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - http://listmj.mothprog.com/
 
-#### 日本産蝶類和名学名便覧
+#### 日本産蝶類和名学名便覧 (猪又 敏男・植村 好延・矢後 勝也・上田 恭一郎・神保 宇嗣)
 
 以下のURLとリンク先のHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
@@ -86,19 +114,19 @@ yomi    japname
 
 リンク切れの際は古いファイルに遡って取得します。
 
-#### 日本産トビケラの種リスト
+#### 日本産トビケラの種リスト (野崎 隆夫)
 
 以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://tobikera.eco.coocan.jp/names.htm
 
-#### 日本産ハネカクシ科総目録
+#### 日本産ハネカクシ科総目録（昆虫綱：甲虫目）(柴田 泰利・丸山 宗利・保科 英人・岸本 年郎・直海 俊一郎・野村 周平・Volker Puthz・島田 孝・渡辺 泰明・山本 周平)
 
 以下のURLで提供されているPDFファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://doi.org/10.15017/26400
 
-#### 日本産有剣膜翅類目録（2016 年版）
+#### 日本産有剣膜翅類目録（2016 年版）(寺山 守)
 
 以下のURLで提供されているPDFファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
@@ -106,11 +134,15 @@ yomi    japname
 
 ### クモ類 (Spiders)
 
+##### 昆虫情報データベース (国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット)
+
 以下のURLとリンク先のHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://insect-web.rad.naro.go.jp/flame/tree
 
 ### 線形動物 (Nematodes)
+
+##### 昆虫情報データベース (国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット)
 
 以下のURLとリンク先のHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
@@ -118,11 +150,15 @@ yomi    japname
 
 ### タナイス類 (Tanaids)
 
+#### 日本近海産タナイス類リスト (角井 敬知)
+
 以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://sites.google.com/site/tnidjpn/tanaidacea/jpnlist
 
 ### ミミズ (Earthworms)
+
+#### 日本産大型陸棲ミミズの種名一覧 (南谷 幸雄)
 
 以下のURLで提供されているExcelファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
@@ -130,37 +166,65 @@ yomi    japname
 
 ### ワラジムシ (Isopods)
 
+#### 日本産ワラジムシ亜目種リスト (唐沢 重考)
+
 以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://www.warajimushi.com/Species/List_species.html
 
 ### 維管束植物 (VascularPlants)
 
-以下のURLで提供されているExcel・CSVファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+#### YList (米倉 浩司・梶田 忠)
+
+以下のURLで提供されているExcelファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - http://ylist.info/
+
+#### FernGreenList ver. 2.0 (Atsushi Ebihara, Tao Fujiwara, Masayuki Takamiya, Motomi Ito, Tetsukazu Yahara)
+
+以下のURLで提供されているCSVファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+
 - https://doi.org/10.57400/data.bnmnsbot.22696618
 
 ### コケ植物 (Bryophytes)
 
+#### A revised new catalog of the mosses of Japan (Tadashi Suzuki)
+
 以下のURLで提供されているPDFファイルがデータファイルです。J-Stageからは自動ダウンロードが禁止されているので、手動でダウンロードしてディレクトリ内に配置して下さい。
 
 - https://doi.org/10.18968/hattoria.7.0_9
+
+#### 日本産タイ類・ツノゴケ類チェックリスト，2018 (片桐 知之・古木 達郎)
+
+以下のURLで提供されているPDFファイルがデータファイルです。J-Stageからは自動ダウンロードが禁止されているので、手動でダウンロードしてディレクトリ内に配置して下さい。
+
 - https://doi.org/10.18968/hattoria.9.0_53
 
 ### 地衣類 (Lichens)
+
+#### Checklist of Lichens and Allied Fungi of Japan (Lichenological Society of Japan)
 
 以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://lichenjapan.jp/checklist/
 
+#### Classification of higher taxonomic groups of lichens and allied fungi in Japan (Lichenological Society of Japan)
+
+以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+
+- https://lichenjapan.jp/systematics/
+
 ### 真菌 (Fungi)
+
+#### 日本産菌類チェックリスト (日本菌学会 データベース委員会)
 
 以下のURLで提供されているExcelファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://www.mycology-jp.org/html/checklist_clist.html
 
 ### 海藻 (Seaweeds)
+
+#### 日本産海藻リスト (鈴木 雅大)
 
 以下のURLとリンク先のHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
