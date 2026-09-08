@@ -206,7 +206,9 @@ my @SOURCES = (
         unzip_only => [ 'NameUsage.tsv', 'VernacularName.tsv' ],
         scope => 0, year => 2026,
         sourcetitle  => 'Catalogue of Life',
-        sourceauthor => [ 'Catalogue of Life Foundation' ],
+        # metadata.yaml の creator は50名以上いる。format_authors が3名以上を
+        # 「先頭 et al.」に畳むので、先頭3名だけを持てば README の表記と一致する。
+        sourceauthor => [ 'Olaf Bánki', 'Yury Roskov', 'Markus Döring' ],
         sourceurl    => 'https://download.checklistbank.org/col/monthly/2026-08-26_xr_coldp.zip',
     },
     {   dir => 'AllTaxa', id => 'wikidata', parser => 'wikidata',
