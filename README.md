@@ -50,11 +50,11 @@ yomi    japname
 
 - https://www.nilim.go.jp/lab/fbg/ksnkankyo/mizukokuweb/system/seibutsuListfile.htm
 
-#### GBIF Backbone Taxonomy (GBIF Secretariat)
+#### Catalogue of Life (2026-08-26 XR)
 
-以下のURLで提供されているzipファイルがデータファイルを含む配布ファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+以下のURLから取得できるzipファイルがデータファイルを含む配布ファイルです。`fetch_data.pl`が実行されると自動的に`AllTaxa/export.zip`としてダウンロードされます。
 
-- https://doi.org/10.15468/39omei
+- https://api.checklistbank.org/dataset/316165/export.zip?extended=true&format=ColDP
 
 #### Wikidata (Wikidata contributors)
 
@@ -246,7 +246,7 @@ yomi    japname
 japname    sciname    japvalid    rank    subrank    sourcetitle    sourceauthor    sourceurl
 ```
 
-実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、scinameが同一でjapnameが異なる行が生じる。scinameにはシノニムは使用しない。japvalidは和名が有効名かどうかを示す(0はinvalidで1はvalid)。和名がシノニムなら0になる。rank・subrankについては後述。sourceurlは上記URLが出力される。sourcetitleはソースのタイトル。sourceauthorは作者名。
+実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、scinameが同一でjapnameが異なる行が生じる。scinameにはシノニムは使用しない。japvalidは和名が有効名かどうかを示す(0はinvalidで1はvalid)。和名がシノニムなら0になる。rank・subrankについては後述。sourceurlは上記URLが出力される。sourcetitleはソースのタイトル。sourceauthorは作者名。ただし、Catalogue of Lifeの場合は該当するエントリごとにsourceIDがあるため、それに基づいてsourcetitle、sourceauthor、sourceurlを出力する。sourceauthorが3名以上の場合、日本語なら「～ら」、英語なら「～ et al.」として2人目以降を省略する。
 
 ### 学名→和名テーブル (sciname2japname_VERSION_BUILDDATE.tsv)
 
@@ -254,7 +254,7 @@ japname    sciname    japvalid    rank    subrank    sourcetitle    sourceauthor
 sciname    japname    scivalid    rank    subrank    sourcetitle    sourceauthor    sourceurl
 ```
 
-実際にはスペースではなくタブを区切りとして使用する。学名シノニムがある場合、japnameが同一でscinameが異なる行が生じる。japnameにはシノニムは使用しない。scivalidは学名が有効名かどうかを示す(0はinvalidで1はvalid)。学名がシノニムなら0になる。rank・subrankについては後述。sourceurlは上記URLが出力される。sourcetitleはソースのタイトル。sourceauthorは作者名。
+実際にはスペースではなくタブを区切りとして使用する。学名シノニムがある場合、japnameが同一でscinameが異なる行が生じる。japnameにはシノニムは使用しない。scivalidは学名が有効名かどうかを示す(0はinvalidで1はvalid)。学名がシノニムなら0になる。rank・subrankについては後述。sourceurlは上記URLが出力される。sourcetitleはソースのタイトル。sourceauthorは作者名。ただし、Catalogue of Lifeの場合は該当するエントリごとにsourceIDがあるため、それに基づいてsourcetitle、sourceauthor、sourceurlを出力する。sourceauthorが3名以上の場合、日本語なら「～ら」、英語なら「～ et al.」として2人目以降を省略する。
 
 ### 和名読み→和名辞書 (yomi2japname_VERSION_BUILDDATE.tsv)
 
