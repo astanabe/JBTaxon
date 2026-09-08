@@ -52,9 +52,9 @@ yomi    japname
 
 #### Catalogue of Life (2026-08-26 XR) (Catalogue of Life Foundation)
 
-以下のURLから取得できるzipファイルがデータファイルを含む配布ファイルです。`fetch_data.pl`が実行されると自動的に`AllTaxa/export.zip`としてダウンロードされます。
+以下のURLから取得できるzipファイルがデータファイルを含む配布ファイルです。`fetch_data.pl`が実行されると自動的に`AllTaxa/2026-08-26_xr_coldp.zip`としてダウンロードされます。
 
-- https://api.checklistbank.org/dataset/316165/export.zip?extended=true&format=ColDP
+- https://download.checklistbank.org/col/monthly/2026-08-26_xr_coldp.zip
 
 #### Wikidata (Wikidata contributors)
 
