@@ -86,6 +86,7 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 - **xlsx は自前のストリーミングリーダで読む** (`read_xlsx`)。`Spreadsheet::ParseXLSX` は使わない。`xl/sharedStrings.xml` と該当シートの XML を `IO::Uncompress::Unzip`（コア）で直接読み、行単位でコールバックへ渡す。ルビ (`<rPh>`) の除去・`inlineStr`・結合セルの繰り下ろしに対応し、**`<dimension>` は信用しない**（R06 は 1048576 行と書いてある）。zip の展開も `IO::Uncompress::Unzip`。
 - **`use utf8` + `Encode` で文字列として扱う。** `fetch_data.pl` はバイト列のままだが、本スクリプトは UTF-8・cp932・PDF 抽出テキストが混ざるので方針が違う。出力は `binmode $fh, ':encoding(UTF-8)'`。
 - **`read_html` は die させない。** UTF-8 として厳密に解釈できなければ cp932 を試し、それも駄目なら `FB_DEFAULT` で読む。海藻の4ファイル（`Brown/Asterocladales.html` / `Desmarestiales.html` / `Dictyotales.html` / `Discosporangiales.html`）は charset の指定がなく中身が cp932 なので、この経路がないと和名が化ける。
+- **和名に空白を入れない。** `norm_japname` が空白を全て除去する。全ソース共通の規則で、「ヒメギフチョウ 北海道亜種」は「ヒメギフチョウ北海道亜種」になる。
 - **NFKC は使わない。** `Itô` / `Bouchè` / `Váňa` を壊す。リガチャ (`ﬁ ﬂ ﬀ`) と康熙部首だけを明示的な置換表 (`%CHAR_FIXUP` / `%KANGXI`) で直す。
 - 中間出力はソース別に `<分類群>/.jbtaxon/<ソースID>.tsv`（10列 `japname / sciname / japvalid / scivalid / rank / subrank / nos2j / sourcetitle / sourceauthor / sourceurl`）。`nos2j` は「有効な和名だが `sciname2japname` の2列目には使わない」印で、分割前の和名を代表に残したまま分割後の和名も和名→学名テーブルに載せるために使う。末尾の出典3列は**レコード単位の上書き**で、空なら `@SOURCES` の値を使う。Catalogue of Life だけがここを埋める。既定では最後に削除し、`--keep` で残す。`.gitignore` の `/<分類群>/*` に既にマッチするのでパターンの追加は不要。
 - **ファイル末尾の「実行」ブロックより前にサブルーチンが使う `my` の表を置くこと。** 実行文がファイル途中にあると、その後ろで宣言された `my %TABLE = (...)` の代入前に参照してしまい、黙って空の表を使う。この事故を防ぐため実行文はすべてファイル末尾に集めてある。
@@ -123,7 +124,8 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
   - **和名の有効性は上書きしない。** CoL も NCBI も和名の有効／シノニムを判定する材料を持たないため。
   - **ソースが有効名としている学名を CoL がシノニムとしている場合は、CoL の有効名（`col:parentID` の先）に差し替えて採用する**（README の規定）。実測で約14,400件。差し替え先は元のレコードの和名・rank・出典を引き継ぎ、`japname2sciname` では有効名側が、`sciname2japname` では有効名（`scivalid=1`）とシノニム（`scivalid=0`）の両方が行になる。
   - 例: JAFList は「アオビクニン」に `Careproctus pellucidus` を当てているが CoL ではシノニムなので、`アオビクニン → Careproctus rastrinus` を採用し、`Careproctus pellucidus → アオビクニン` は `scivalid=0` として残す。
-  - **rank も差し替え先のもの（CoL の `col:rank`）を使う。** CoL は亜種を種のシノニムとしていることが多く、和名だけ亜種の rank のまま残ると学名と食い違うため（「ヒメギフチョウ 北海道亜種」→ `Luehdorfia puziloi`、rank は 31 ではなく 30）。
+  - **rank も差し替え先のもの（CoL の `col:rank`）を使う。** 差し替え先の学名と rank が食い違わないようにするため。
+  - **ただし「下位の階層を上位の階層のシノニムにしている」判定は採用しない。** CoL は亜種を種のシノニムとして畳んでいることが多いが、それに従うと亜種の和名が種の学名を指すようになってしまう。synonym 側と有効名側の `col:rank` を比べ、有効名の方が上位ならその判定ごと無視してソース側の階層と学名のまま残す（「ヒメギフチョウ北海道亜種」は `Luehdorfia puziloi yessoensis` のまま）。
 - CoL のスコアは `3`=有効名 / `2`=シノニムだがその有効名と属名が同じ（＝現在の組み合わせ）/ `1`=登録はあるがそのどちらでもない / `0`=見つからない。「ヤマドリ」の `Synchiropus ijimai` と `Neosynchiropus ijimai` はどちらも `Neosynchiropus ijimae` のシノニムなので、属名の一致する後者が採用される。シノニムの有効名を引くために `NameUsage.tsv` をもう1周する。
 - **`norm_sciname` は接続語の直後だけ識別子を許す。** `sp. 1` / `subsp. 2` / `sp. L` / `sp. 'yamato'` を残しつつ、著者名を種小名と取り違えないため。`sensu` `auct.` `non` `nec` `complex` `group` `Type` `of` は名前の一部ではないのでそこで打ち切る。
 - **Catalogue of Life** — `2026-08-26_xr_coldp.zip` から展開した `NameUsage.tsv`（約3GB）と `VernacularName.tsv` を突き合わせる。巨大なので **`:encoding(UTF-8)` を通さずバイト列で行を読み、1列目の ID が必要な集合にある行だけ split して該当フィールドを decode する**。シノニムの有効名は `col:parentID` の先にあるので2周する。`language` が `jpn` の和名は 99,738件（GBIF Backbone Taxonomy の 27,558件の上位互換）。ローマ字表記の和名は `is_placeholder` が日本語文字を含まない名前として落とす（意図した挙動）。
