@@ -80,6 +80,12 @@ my @JAPNAME_NOTES = (
     '(和名新称)', '(和名改称)', '(新称)', '(仮称)', '(旧称)', '(p.p.)',
     '『和名新称』', '『和名改称』',
     '[NR]', '[要検討]', '[非合法名]', '[非正式名]', '[裸名]',
+    '【広義】', '【狭義】',
+);
+
+# 情報源の誤記のうち、正しい表記が判明しているもの。
+my %JAPNAME_FIX = (
+    'アオゾメキロキツネガサ' => 'アオゾメキイロキツネガサ',
 );
 
 # Catalogue of Life (ColDP) の分類階級と、有効名として扱わない status。
@@ -1439,12 +1445,20 @@ sub norm_japname {
     return '' unless defined $s;
     $s = strip_japnotes(fixup_chars($s));
     $s =~ s/\x{3000}//g;
+    # 「別名：」「別称：」の前置きは名前の一部ではない
+    $s =~ s/\A\s*(?:別名|別称|旧名|和名)\s*[：:]\s*//;
+    # 「：コケ植物と同名異種」「．和名保留」「”はPsoraへの後続同名」のような
+    # 末尾の説明を落とす。分類群和名にこれらの記号は使われない。
+    $s =~ s/[：:].*\z//s;
+    $s =~ s/[\x{201C}\x{201D}].*\z//s;
+    $s =~ s/[．\.](?=\S*[\x{3040}-\x{30FF}\x{4E00}-\x{9FFF}]).*\z//s;
+    $s =~ s/[？?]//g;
     $s = squeeze($s);
     $s =~ s/[．。\.]+\z//;
     $s =~ s/\A[\s・,、，\x{201C}\x{201D}"]+//;
     $s =~ s/[\s・,、，\x{201C}\x{201D}"]+\z//;
     $s =~ s/\s+//g;
-    return $s;
+    return exists $JAPNAME_FIX{$s} ? $JAPNAME_FIX{$s} : $s;
 }
 
 # 学名の正規化。著者名・年・ライフステージ注記を落とし、
@@ -1517,7 +1531,7 @@ sub split_japsyn {
     }
     # 括弧の外は既定では「・」で切らない (「日本本土・大陸亜種」のような修飾語を
     # 壊すため)。「・」で別名を併記する情報源だけが $seps で明示的に指定する。
-    my @primary = split_japnames($s, defined $seps ? $seps : '，、,');
+    my @primary = split_japnames($s, defined $seps ? $seps : '，、,；;');
     my @rest;
     push @rest, split_japnames($_) for @syn;
     my $head = shift @primary;
@@ -1528,7 +1542,7 @@ sub split_japsyn {
 sub split_japnames {
     my ($s, $seps) = @_;
     return () unless defined $s;
-    $seps = '，、,・' unless defined $seps;
+    $seps = '，、,・；;' unless defined $seps;
     my $re = '[' . quotemeta($seps) . ']';
     my @out;
     for my $p (split /$re/, $s) {
@@ -1593,7 +1607,12 @@ sub is_placeholder {
     return 1 if $jap =~ /\A(?:和名なし|なし|不明|未定|-|―|‐)\z/;
     return 1 if $jap !~ /[\x{3040}-\x{30FF}\x{4E00}-\x{9FFF}\x{FF66}-\x{FF9D}]/;
     return 1 if $jap =~ /\A[A-Za-z][A-Za-z0-9 .()\x{2019}'-]*(?:属|亜属|節|科|亜科|族|亜族|目|亜目|上科|綱|亜綱|門|亜門|界|種|亜種)\z/;
-    return 1 if $jap =~ /(?:界|門|亜門|綱|亜綱|目|亜目|上科|科|亜科|族|属|亜属)の(?:1|一)種\z/;
+    # 「〜属の一種」「〜の一種の幼虫」のような未同定の記載は和名ではない
+    return 1 if $jap =~ /の(?:1|一)種\s*\d*(?:の幼虫|の成虫)?\z/;
+    return 1 if $jap =~ /\A(?:和名保留|所属科不明|所属不明|科不明|属不明)\z/;
+    # 「名部みち代新称」「澤田1944」のような命名者や文献の記載
+    return 1 if $jap =~ /新称\z/;
+    return 1 if $jap =~ /\d{4}\z/;
     # 注記語そのもの。「エゾホウオウゴケ (チョウセイホウオウゴケ，新称)」のように
     # 括弧の中で別名と注記がカンマ区切りで並ぶ行があり、分割すると注記だけが残る。
     return 1 if $jap =~ /\A(?:和名)?(?:新称|改称|仮称|旧称|別称)\z/;
@@ -1642,7 +1661,9 @@ sub add_pair {
 sub strip_trailing_sciname {
     my ($jap, $sci) = @_;
     return $jap unless defined $jap && length $jap && length $sci;
+    (my $packed = $sci) =~ s/\s+//g;
     $jap =~ s/\s*\Q$sci\E\s*\z//;
+    $jap =~ s/\s*\Q$packed\E\s*\z// if length $packed;
     return trim($jap);
 }
 
@@ -2031,6 +2052,8 @@ sub parse_mammals {
             return unless defined $rn && $rn >= 3;
             my @f = map { defined $_ ? trim($_) : '' } @$c[0 .. 23];
             return unless length $f[0];    # 付録ブロックは Order 列が空
+            # 目・亜目・下目の学名は総大文字で書かれている
+            for my $i (0, 2, 4) { $f[$i] = ucfirst(lc $f[$i]) if $f[$i] =~ /\A[A-Z-]{2,}\z/ }
             add_levels(\@out, \@f, [
                 [ 1,  0,  rk('order'),      1 ],
                 [ 3,  2,  rk('suborder'),   1 ],
@@ -2810,6 +2833,8 @@ sub parse_seaweeds {
     my @out;
     for my $path (@$paths) {
         my $html = read_html($path);
+        # 「参考文献」より後ろは文献リストで、論文の表題が並んでいるだけ。
+        $html = substr($html, 0, $-[0]) if $html =~ /参\s*考\s*文\s*献/;
         my ($cur_sci, $cur_jap, $cur_rank, $cur_subrank) = ('', '', undef, 1);
         while ($html =~ m{<tr\b.*?</tr>}gsi) {
             my $row = $&;
@@ -2858,21 +2883,20 @@ sub seaweed_synonym {
     $flat =~ s/\A[\x{2261}=＝]\s*//;          # ≡ / = のシノニム記号
     return unless length $flat;
 
-    my ($jap, $sci);
-    if ($body =~ /<em\b/i) {
-        ($jap) = $body =~ m{\A(.*?)<em\b}si;
-        ($sci) = $body =~ m{(<em\b.*)\z}si;
-        $jap = squeeze(html_unescape(html_text(defined $jap ? $jap : '')));
-        $jap =~ s/\A[\x{2261}=＝]\s*//;
-        $sci = norm_sciname(squeeze(html_unescape(html_text(defined $sci ? $sci : ''))));
-    }
-    else {
-        ($sci, $jap) = ('', '');
-        if ($flat =~ /\A(.*?)\s*([A-Z][A-Za-z].*)\z/) { ($jap, $sci) = ($1, norm_sciname($2)) }
+    # <em> の位置では切らない。「[アミハダ科 Rhodophyllidaceae F.Schmitz
+    # <em>in</em> Engler (1892)]」のように学名以外が斜体になっている行があるため。
+    # 上位分類群のシノニムには「和名 Genus 学名」のようにランク語が挟まる。
+    my $rankwords = join '|', sort { length($b) <=> length($a) } keys %SEAWEED_RANK;
+    my ($jap, $sci) = ('', '');
+    if ($flat =~ /\A(.*?)\s*(?:(?:$rankwords)\s+)?([A-Z][A-Za-z].*)\z/) {
+        ($jap, $sci) = ($1, norm_sciname($2));
     }
     if (length $sci && $sci ne $cur_sci) {
+        # 行自身が和名を持つ場合はその和名もシノニム。持たない場合は現在の
+        # 分類群の和名 (有効名) を当てる。
         my $with = length $jap ? $jap : $cur_jap;
-        add_pair($out, $with, $sci, $rank, $subrank, scivalid => 0);
+        add_pair($out, $with, $sci, $rank, $subrank,
+                 scivalid => 0, japvalid => (length $jap ? 0 : 1));
     }
     if (length $jap && length $cur_jap) {
         my ($h) = split_japsyn($jap);
