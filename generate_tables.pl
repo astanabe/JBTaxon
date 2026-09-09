@@ -678,7 +678,7 @@ sub cleanup_intermediates {
 #   %validity               ... 有効性。新しさのみ (狭さは考慮しない)
 #-----------------------------------------------------------------------------
 sub merge_directory {
-    my ($dir, $sources, $colv, $ncbiv) = @_;
+    my ($dir, $sources, $colv, $ncbiv, $accepted) = @_;
     my @have;
     for my $i (0 .. $#$sources) {
         my $src  = $sources->[$i];
@@ -725,6 +725,24 @@ sub merge_directory {
                             $dir, $n_col, $n_ncbi))
         if $n_col || $n_ncbi;
 
+    # ソースが有効名としている学名を CoL がシノニムとしている場合、CoL の有効名に
+    # 直して採用する (README の規定)。差し替え先は CoL が有効名としているので
+    # 有効性の表にも入れておく。
+    my %fixed;
+    for my $e (@records) {
+        my ($jap, $sci, $jv, $sv) = @{ $e->[0] };
+        next unless $sv;
+        next if valid_of(\%validity, "s\t$sci");
+        my $a = $accepted->{$sci};
+        next unless defined $a && length $a && $a ne $sci;
+        $fixed{$sci} = $a;
+        $validity{"s\t$a"} = [ 1, 0, 0, 0 ] unless exists $validity{"s\t$a"};
+        $validity{"s\t$a"}[0] = 1;
+    }
+    logmsg('fix', sprintf('%s: シノニムとされた学名 %d 件を Catalogue of Life の有効名に差し替えました',
+                          $dir, scalar keys %fixed))
+        if %fixed;
+
     # 第2周: 対応付けを決める。2列目に来る名前は、解決後の有効性が 1 のものに
     # 限る。こうしておけば「2列目にシノニムは使わない」が構造として保証される。
     my (%adopt_j2s, %adopt_s2j);
@@ -738,6 +756,10 @@ sub merge_directory {
                      st => $st, sa => $sa, su => $su };
         adopt(\%adopt_j2s, $jap, $cand) if $sv && $svalid;
         adopt(\%adopt_s2j, $sci, $cand) if $jv && $jvalid && !$nos2j;
+        next unless $sv && !$svalid && exists $fixed{$sci};
+        my $fix = { %$cand, sci => $fixed{$sci} };
+        adopt(\%adopt_j2s, $jap, $fix);
+        adopt(\%adopt_s2j, $fixed{$sci}, $fix) if $jv && $jvalid && !$nos2j;
     }
 
     my $j2s = write_final($dir, 'japname2sciname', \%adopt_j2s, \%validity, 'j');
@@ -3494,8 +3516,8 @@ sub collect_scinames {
 
 sub external_validity {
     my ($name_bytes) = @_;
-    my (%col, %ncbi);
-    return (\%col, \%ncbi) unless %$name_bytes;
+    my (%col, %ncbi, %parent, %accepted);
+    return (\%col, \%ncbi, \%accepted) unless %$name_bytes;
 
     my $usage = File::Spec->catfile($basedir, 'AllTaxa', 'NameUsage.tsv');
     if (-f $usage) {
@@ -3509,8 +3531,27 @@ sub external_validity {
             my $valid = $COL_INVALID_STATUS{ defined $f[6] ? $f[6] : '' } ? 0 : 1;
             # 同じ学名が別の提供元で有効名としても載っていれば有効名を採る
             $col{ $f[7] } = $valid if !exists $col{ $f[7] } || $valid;
+            # シノニムの有効名は col:parentID の先にある
+            $parent{ $f[7] } = $f[4]
+                if !$valid && defined $f[4] && length $f[4] && !exists $parent{ $f[7] };
         }
         close $fh;
+
+        # 有効名として採り直す学名を引く
+        my %needp = map { $_ => 1 } grep { !$col{$_} } keys %parent;
+        %needp = map { $parent{$_} => 1 } keys %needp;
+        if (%needp) {
+            my %pname;
+            col_scan($usage, \%needp, sub {
+                my ($id, $f) = @_;
+                $pname{$id} = defined $f->[7] ? $f->[7] : '';
+            });
+            for my $n (keys %parent) {
+                next if $col{$n};
+                my $a = $pname{ $parent{$n} };
+                $accepted{$n} = $a if defined $a && length $a && $a ne $n;
+            }
+        }
     }
 
     my $dmp = File::Spec->catfile($basedir, 'NCBITaxonomy', 'names.dmp');
@@ -3528,10 +3569,12 @@ sub external_validity {
     }
 
     # バイト列のキーを文字列のキーに直す
-    my (%colc, %ncbic);
+    my (%colc, %ncbic, %accc);
     $colc{ Encode::decode('UTF-8', $_, Encode::FB_DEFAULT) }  = $col{$_}  for keys %col;
     $ncbic{ Encode::decode('UTF-8', $_, Encode::FB_DEFAULT) } = $ncbi{$_} for keys %ncbi;
-    return (\%colc, \%ncbic);
+    $accc{ Encode::decode('UTF-8', $_, Encode::FB_DEFAULT) }
+        = Encode::decode('UTF-8', $accepted{$_}, Encode::FB_DEFAULT) for keys %accepted;
+    return (\%colc, \%ncbic, \%accc);
 }
 
 #-----------------------------------------------------------------------------
@@ -3551,9 +3594,9 @@ unless ($dry_run) {
     my @all  = grep { my $d = $_->{dir}; grep { $_ eq $d } @dirs } @SOURCES;
     # 学名の有効性は Catalogue of Life を基本とする。巨大なファイルを何度も
     # 走査しないよう、全ディレクトリ分の学名を集めてから1回だけ引く。
-    my ($colv, $ncbiv) = external_validity(collect_scinames(\@all));
+    my ($colv, $ncbiv, $accepted) = external_validity(collect_scinames(\@all));
     for my $dir (@dirs) {
-        merge_directory($dir, [ grep { $_->{dir} eq $dir } @SOURCES ], $colv, $ncbiv);
+        merge_directory($dir, [ grep { $_->{dir} eq $dir } @SOURCES ], $colv, $ncbiv, $accepted);
     }
     cleanup_intermediates(\@selected) unless $keep;
 }

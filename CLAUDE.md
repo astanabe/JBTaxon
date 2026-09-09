@@ -121,7 +121,8 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 - **学名の有効性は Catalogue of Life を基本とする**（README の規定）。`external_validity()` が全ディレクトリ分の学名をまとめて集め、`AllTaxa/NameUsage.tsv` を**1回だけ**走査して `col:status` で上書きする。CoL にない学名で、かつソース間の判定が食い違っているものだけ `NCBITaxonomy/names.dmp` の name class で決める。実測では CoL による上書きが約17,000件、NCBI が9件。
   - 比較は **UTF-8 のバイト列のまま**行い decode しない（1千万行を decode すると遅い）。ファイルが無ければその段を飛ばすので、`AllTaxa` を取得していなくても動く。
   - **和名の有効性は上書きしない。** CoL も NCBI も和名の有効／シノニムを判定する材料を持たないため。
-  - この結果、ソースが有効名としている学名でも CoL がシノニムとしていれば `scivalid=0` になり、その和名に有効な学名が1つも残らなければ `japname2sciname` から落ちる（実測で約13,000行）。`sciname2japname` には `scivalid=0` の行として残る。
+  - **ソースが有効名としている学名を CoL がシノニムとしている場合は、CoL の有効名（`col:parentID` の先）に差し替えて採用する**（README の規定）。実測で約14,400件。差し替え先は元のレコードの和名・rank・出典を引き継ぎ、`japname2sciname` では有効名側が、`sciname2japname` では有効名（`scivalid=1`）とシノニム（`scivalid=0`）の両方が行になる。
+  - 例: JAFList は「アオビクニン」に `Careproctus pellucidus` を当てているが CoL ではシノニムなので、`アオビクニン → Careproctus rastrinus` を採用し、`Careproctus pellucidus → アオビクニン` は `scivalid=0` として残す。
 - CoL のスコアは `3`=有効名 / `2`=シノニムだがその有効名と属名が同じ（＝現在の組み合わせ）/ `1`=登録はあるがそのどちらでもない / `0`=見つからない。「ヤマドリ」の `Synchiropus ijimai` と `Neosynchiropus ijimai` はどちらも `Neosynchiropus ijimae` のシノニムなので、属名の一致する後者が採用される。シノニムの有効名を引くために `NameUsage.tsv` をもう1周する。
 - **`norm_sciname` は接続語の直後だけ識別子を許す。** `sp. 1` / `subsp. 2` / `sp. L` / `sp. 'yamato'` を残しつつ、著者名を種小名と取り違えないため。`sensu` `auct.` `non` `nec` `complex` `group` `Type` `of` は名前の一部ではないのでそこで打ち切る。
 - **Catalogue of Life** — `2026-08-26_xr_coldp.zip` から展開した `NameUsage.tsv`（約3GB）と `VernacularName.tsv` を突き合わせる。巨大なので **`:encoding(UTF-8)` を通さずバイト列で行を読み、1列目の ID が必要な集合にある行だけ split して該当フィールドを decode する**。シノニムの有効名は `col:parentID` の先にあるので2周する。`language` が `jpn` の和名は 99,738件（GBIF Backbone Taxonomy の 27,558件の上位互換）。ローマ字表記の和名は `is_placeholder` が日本語文字を含まない名前として落とす（意図した挙動）。
@@ -217,7 +218,7 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 1. より狭い分類群を対象とするソースを優先
 2. 同条件なら、より新しいソースを優先
 
-**ただし有効名／シノニムの判定（`japvalid` / `scivalid` の値）だけは例外で、分類群の狭さを考慮しない。学名については Catalogue of Life を基本とし、CoL にない学名だけ「より新しいソースか」で決める（食い違うものは NCBI Taxonomy）。和名については「より新しいソースか」のみで決める。** つまり衝突解決は2系統に分かれる:
+**ただし有効名／シノニムの判定（`japvalid` / `scivalid` の値）だけは例外で、分類群の狭さを考慮しない。学名については Catalogue of Life を基本とし、CoL にない学名だけ「より新しいソースか」で決める（食い違うものは NCBI Taxonomy）。和名については「より新しいソースか」のみで決める。ソースの学名が CoL でシノニムとされている場合は CoL の有効名に差し替えて採用する。** つまり衝突解決は2系統に分かれる:
 
 - どの名前を採用するか（行の選択・対応付け） → 狭さ優先、次いで新しさ
 - 採用した名前が有効名かシノニムか → 新しさのみ
