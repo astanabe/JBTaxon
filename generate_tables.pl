@@ -1446,7 +1446,11 @@ sub norm_sciname {
         $prev_connector = 0;
         if ($t =~ /\Ax\z/)                                                     { push @out, $t; next }
         # 括弧付きの亜属名は属名の直後にしか現れない。それ以外の括弧は著者名。
-        if ($i == 1 && $t =~ /\A\([A-Z][A-Za-z-]*\)\z/)                       { push @out, $t; next }
+        # 亜属名は学名に入れない。情報源によって書いたり書かなかったりするので、
+        # 入れると同じ分類群が別名として散らばる (Catalogue of Life は
+        # 「Ocnerodrilus occidentalis」を「Ocnerodrilus (Ocnerodrilus)
+        # occidentalis」のシノニムとして登録している)。
+        if ($i == 1 && $t =~ /\A\([A-Z][A-Za-z-]*\)\z/)                       { next }
         if ($t =~ /\A[a-z][a-z-]*\z/)                                          { push @out, $t; next }
         last;
     }
@@ -1721,7 +1725,8 @@ sub taxonomy_scores {
             next unless $line =~ $re;
             chomp $line;
             my @f = split /\t/, $line, 11;
-            my $name = Encode::decode('UTF-8', (defined $f[7] ? $f[7] : ''), Encode::FB_DEFAULT);
+            my $name = Encode::decode('UTF-8', strip_subgenus(defined $f[7] ? $f[7] : ''),
+                                      Encode::FB_DEFAULT);
             next unless exists $want{$name};
             my $status = defined $f[6] ? $f[6] : '';
             next if ($seen_status{$name} || '') eq 'accepted';
@@ -1735,8 +1740,9 @@ sub taxonomy_scores {
         my %pname;
         col_scan($usage, \%needp, sub {
             my ($id, $f) = @_;
-            $pname{$id} = Encode::decode('UTF-8', (defined $f->[7] ? $f->[7] : ''),
-                                         Encode::FB_DEFAULT);
+            $pname{$id} = Encode::decode('UTF-8',
+                              strip_subgenus(defined $f->[7] ? $f->[7] : ''),
+                              Encode::FB_DEFAULT);
         }) if %needp;
 
         for my $name (@$names) {
@@ -3521,6 +3527,15 @@ sub parse_jsv_virus {
 # 約3GB・1千万行あるので、比較は UTF-8 のバイト列のまま行い decode しない。
 # ファイルが無ければその段を飛ばすので、AllTaxa を取得していなくても動く。
 #-----------------------------------------------------------------------------
+# 「Genus (Subgenus) epithet」の亜属名を外す。norm_sciname と同じことを、
+# 巨大なファイルをバイト列のまま走査する側でも行う必要がある。
+sub strip_subgenus {
+    my ($name) = @_;
+    return $name unless defined $name;
+    $name =~ s/\A([A-Z][A-Za-z-]*) \([A-Z][A-Za-z-]*\) /$1 /;
+    return $name;
+}
+
 sub collect_scinames {
     my ($sources) = @_;
     my %names;
@@ -3554,14 +3569,15 @@ sub external_validity {
         while (my $line = <$fh>) {
             chomp $line;
             my @f = split /\t/, $line, 11;
-            next unless defined $f[7] && exists $name_bytes->{ $f[7] };
+            my $name = strip_subgenus($f[7]);
+            next unless defined $name && exists $name_bytes->{$name};
             my $valid = $COL_INVALID_STATUS{ defined $f[6] ? $f[6] : '' } ? 0 : 1;
             # 同じ学名が別の提供元で有効名としても載っていれば有効名を採る
-            $col{ $f[7] } = $valid if !exists $col{ $f[7] } || $valid;
+            $col{$name} = $valid if !exists $col{$name} || $valid;
             # シノニムの有効名は col:parentID の先にある
-            if (!$valid && defined $f[4] && length $f[4] && !exists $parent{ $f[7] }) {
-                $parent{ $f[7] } = $f[4];
-                $srank{ $f[7] }  = defined $f[9] ? $f[9] : '';
+            if (!$valid && defined $f[4] && length $f[4] && !exists $parent{$name}) {
+                $parent{$name} = $f[4];
+                $srank{$name}  = defined $f[9] ? $f[9] : '';
             }
         }
         close $fh;
@@ -3573,7 +3589,7 @@ sub external_validity {
             my %pname;
             col_scan($usage, \%needp, sub {
                 my ($id, $f) = @_;
-                $pname{$id} = [ (defined $f->[7] ? $f->[7] : ''),
+                $pname{$id} = [ strip_subgenus(defined $f->[7] ? $f->[7] : ''),
                                 (defined $f->[9] ? $f->[9] : '') ];
             });
             for my $n (keys %parent) {
