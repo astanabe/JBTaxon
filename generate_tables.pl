@@ -1684,6 +1684,9 @@ sub norm_sciname {
     $s =~ s/\bssp\.\s+/subsp. /g;
     $s = squeeze($s);
     return '' unless length $s;
+    # 「Aedes (Stegomyia)」のように種小名を伴わない形は亜属そのものの名前。
+    # 亜属の学名は命名規約上1語なので、括弧を外して亜属名だけにする。
+    $s =~ s/\A[A-Z][A-Za-z-]* \(([A-Z][A-Za-z-]*)\)\z/$1/;
     # 「NEUROPTERA」「VERTEBRATA」のように総大文字で書かれた高次分類群を直す。
     # ラテン語の分類群名は母音か s で終わるので、CPR・DPANN・PVC のような
     # 原核生物の群の略号は総大文字のまま残る。
@@ -1909,6 +1912,8 @@ sub is_placeholder {
     # 病名は生物の和名ではない (「豚熱」「鶏痘」「マツ材線虫病」「毛じらみ症」)。
     # 「〜病菌」「〜病ウイルス」は病原体の和名なので末尾でだけ判定する。
     return 1 if $jap =~ /(?:症|病|熱|炎|痘|疽)\z/;
+    # 和名の出力に使える文字の範囲に収まっていること (README の規定)
+    return 1 unless japname_chars_ok($jap);
     # 日本語の文字集合 (JIS X 0213) にない文字を含むものは和名ではない。
     # 簡体字の中国語 (「西伯利亚白刺」「小药八旦子」「类早熟禾」)、ハングルの混入
     # (「オシダ한국어」)、ビルマ文字 (「ハマザクロ属ဘ」) がこれで落ちる。
@@ -1947,6 +1952,38 @@ sub japname_valid_form {
     return 0 unless $jap =~ /[\x{30A1}-\x{30FA}]/;      # カタカナを含むこと
     return 1 if !defined $rank || $rank >= rk('species');
     return $jap =~ /(?:$JAP_RANK_WORD_RE)\z/ ? 1 : 0;
+}
+
+# 和名の出力に使える文字 (README の規定)。漢字・ひらがな・全角カナ・踊り字 (々)・
+# 長音符 (ー)・半角英数字・ギリシャ文字と、記号は中黒 (・)・ハイフン (-)・
+# ピリオド (.) だけ。全角カナの範囲 U+30A1-U+30FC に中黒と長音符が入る。
+# これに外れる字を含む和名は出力しない (「カスモサウルス#エオケラトプス」
+# 「単子葉植物綱>サトイモ目>…」「成体_雌」「コウラKōura」)。
+# 漢字が日本語の文字集合に入っているかは japanese_chars が別に見る
+# (簡体字の中国語は下の範囲には収まってしまうため)。
+my $JAPNAME_CHAR = qr/[\x{3005}\x{3041}-\x{3096}\x{30A1}-\x{30FC}
+                       \x{4E00}-\x{9FFF}\x{3400}-\x{4DBF}\x{F900}-\x{FAFF}
+                       \x{20000}-\x{2FA1F}\x{0370}-\x{03FF}0-9A-Za-z\-.]/xx;
+
+sub japname_chars_ok {
+    my ($s) = @_;
+    return 0 unless defined $s && length $s;
+    return $s =~ /\A$JAPNAME_CHAR+\z/ ? 1 : 0;
+}
+
+# 学名の出力に使える文字。半角英数字と半角スペース、記号はピリオド (接続語
+# 「var.」「sp.」)・ハイフン (複合種小名「borisii-regis」)・シングルクオート
+# (未記載種の印「Cobitis sp. 'yamato'」) だけ。
+# 丸括弧は使わない——亜属の学名は命名規約上1語なので「Aedes (Stegomyia)」は
+# 「Stegomyia」にする。発音区別符号付きのラテン文字も使わない (命名規約が認めて
+# おらず、実データにも1字も現れない。「Itô」のような綴りは著者名であって学名の
+# 一部ではない)。
+my $SCINAME_CHAR = qr/[A-Za-z0-9 .\-']/;
+
+sub sciname_chars_ok {
+    my ($s) = @_;
+    return 0 unless defined $s && length $s;
+    return $s =~ /\A$SCINAME_CHAR+\z/ ? 1 : 0;
 }
 
 # 名前が日本語の文字だけでできているか。判定は日本語の文字集合の現行規格である
@@ -1993,6 +2030,11 @@ sub add_pair {
     # Duamitovirus crpa1 のような種小名を切り落としてしまう。
     $sci = $opt{rawsci} ? space_sci_digits(fixup_chars($sci)) : norm_sciname($sci);
     return unless length $sci;
+    # 学名の出力に使える文字の範囲に収まっていること (README の規定)
+    unless (sciname_chars_ok($sci)) {
+        reject_japname($jap, $sci, '学名に使えない文字');
+        return;
+    }
     my ($head, @syn);
     if ($opt{nosplit}) { $head = norm_japname(defined $jap ? $jap : '') }
     else { ($head, @syn) = split_japsyn(defined $jap ? $jap : '', $opt{seps}) }
@@ -2211,8 +2253,8 @@ sub taxonomy_scores {
             next unless $line =~ $re;
             chomp $line;
             my @f = split /\t/, $line, 11;
-            my $name = space_sci_digits(Encode::decode('UTF-8',
-                             strip_subgenus(defined $f[7] ? $f[7] : ''), Encode::FB_DEFAULT));
+            my $name = Encode::decode('UTF-8',
+                             ref_sciname_bytes(defined $f[7] ? $f[7] : ''), Encode::FB_DEFAULT);
             next unless exists $want{$name};
             my $status = defined $f[6] ? $f[6] : '';
             next if ($seen_status{$name} || '') eq 'accepted';
@@ -2226,9 +2268,9 @@ sub taxonomy_scores {
         my %pname;
         col_scan($usage, \%needp, sub {
             my ($id, $f) = @_;
-            $pname{$id} = space_sci_digits(Encode::decode('UTF-8',
-                              strip_subgenus(defined $f->[7] ? $f->[7] : ''),
-                              Encode::FB_DEFAULT));
+            $pname{$id} = Encode::decode('UTF-8',
+                              ref_sciname_bytes(defined $f->[7] ? $f->[7] : ''),
+                              Encode::FB_DEFAULT);
         }) if %needp;
 
         for my $name (@$names) {
@@ -2250,8 +2292,8 @@ sub taxonomy_scores {
             next unless $line =~ $re;
             chomp $line;
             my @f = split /\s*\|\s*/, $line;
-            my $nm = space_sci_digits(Encode::decode('UTF-8',
-                             (defined $f[1] ? $f[1] : ''), Encode::FB_DEFAULT));
+            my $nm = Encode::decode('UTF-8',
+                             ref_sciname_bytes(defined $f[1] ? $f[1] : ''), Encode::FB_DEFAULT);
             next unless exists $want{$nm};
             my $class = defined $f[3] ? $f[3] : '';
             my $score = $class eq 'scientific name' ? 2 : 1;
@@ -4093,13 +4135,25 @@ sub parse_jsv_virus {
 # 約3GB・1千万行あるので、比較は UTF-8 のバイト列のまま行い decode しない。
 # ファイルが無ければその段を飛ばすので、AllTaxa を取得していなくても動く。
 #-----------------------------------------------------------------------------
-# 「Genus (Subgenus) epithet」の亜属名を外す。norm_sciname と同じことを、
-# 巨大なファイルをバイト列のまま走査する側でも行う必要がある。
+# 「Genus (Subgenus) epithet」の亜属名を外す。種小名を伴わない
+# 「Genus (Subgenus)」は亜属そのものの名前なので、亜属名だけにする。
+# norm_sciname と同じことを、巨大なファイルをバイト列のまま走査する側でも行う。
 sub strip_subgenus {
     my ($name) = @_;
     return $name unless defined $name;
+    $name =~ s/\A[A-Z][A-Za-z-]* \(([A-Z][A-Za-z-]*)\)\z/$1/;
     $name =~ s/\A([A-Z][A-Za-z-]*) \([A-Z][A-Za-z-]*\) /$1 /;
     return $name;
+}
+
+# 参照データ (NameUsage.tsv / names.dmp) の学名を、こちらの学名と突き合わせられる
+# 形にする。norm_sciname と同じことをバイト列のまま行う (1千万行を decode すると
+# 遅いため)。ここを通さないと、雑種記号や亜属の書き方の違いで突き合わせが外れる。
+sub ref_sciname_bytes {
+    my ($name) = @_;
+    return $name unless defined $name;
+    $name =~ s/\xc3\x97/x/g;    # 雑種記号 × (UTF-8 で C3 97) は x に寄せる
+    return unify_ssp(space_digits_bytes(strip_subgenus($name)));
 }
 
 # 半角数字の前後を空白で区切る。space_sci_digits と同じことを、バイト列のまま
@@ -4148,9 +4202,8 @@ sub external_validity {
         while (my $line = <$fh>) {
             chomp $line;
             my @f = split /\t/, $line, 11;
-            my $name = space_digits_bytes(strip_subgenus($f[7]));
+            my $name = ref_sciname_bytes($f[7]);
             next unless defined $name;
-            $name = unify_ssp($name);
             next unless exists $name_bytes->{$name};
             my $valid = $COL_INVALID_STATUS{ defined $f[6] ? $f[6] : '' } ? 0 : 1;
             # 同じ学名が別の提供元で有効名としても載っていれば有効名を採る
@@ -4170,8 +4223,7 @@ sub external_validity {
             my %pname;
             col_scan($usage, \%needp, sub {
                 my ($id, $f) = @_;
-                $pname{$id} = [ unify_ssp(
-                                    space_digits_bytes(strip_subgenus(defined $f->[7] ? $f->[7] : ''))),
+                $pname{$id} = [ ref_sciname_bytes(defined $f->[7] ? $f->[7] : ''),
                                 (defined $f->[9] ? $f->[9] : '') ];
             });
             for my $n (keys %parent) {
@@ -4196,9 +4248,8 @@ sub external_validity {
         while (my $line = <$fh>) {
             chomp $line;
             my @f = split /\s*\|\s*/, $line, 5;
-            my $nm = space_digits_bytes(defined $f[1] ? $f[1] : '');
+            my $nm = ref_sciname_bytes(defined $f[1] ? $f[1] : '');
             next unless length $nm;
-            $nm = unify_ssp($nm);
             next unless exists $name_bytes->{$nm};
             my $valid = (defined $f[3] && $f[3] eq 'scientific name') ? 1 : 0;
             $ncbi{$nm} = $valid if !exists $ncbi{$nm} || $valid;
