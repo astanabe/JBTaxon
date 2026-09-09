@@ -306,41 +306,41 @@ yomi    lid    rid    cost    sciname    ENGLISH
 
 rankは各分類階層に割り当てられた以下の数値です。
 
-1. superkingdom, domain, realm
-2. kingdom
-3. subkingdom
-4. superphylum
-5. phylum
-6. subphylum
-7. superclass
-8. class
-9. subclass
-10. infraclass
-11. cohort
-12. subcohort
-13. superorder
-14. order
-15. suborder
-16. infraorder
-17. parvorder
-18. superfamily
-19. family
-20. subfamily
-21. tribe
-22. subtribe
-23. genus
-24. subgenus
-25. section
-26. subsection
-27. series
-28. species group
-29. species subgroup
-30. species
-31. subspecies, morph, subvariety, pathogroup, serogroup
-32. varietas, biotype, genotype, serotype
-33. forma
+1. superkingdom (上界), domain (ドメイン), realm (レルム)
+2. kingdom (界)
+3. subkingdom (亜界)
+4. superphylum (上門)
+5. phylum (門)
+6. subphylum (亜門)
+7. superclass (上綱)
+8. class (綱)
+9. subclass (亜綱)
+10. infraclass (下綱)
+11. cohort (コホート)
+12. subcohort (サブコホート)
+13. superorder (上目)
+14. order (目)
+15. suborder (亜目)
+16. infraorder (下目)
+17. parvorder (小目)
+18. superfamily (上科)
+19. family (科)
+20. subfamily (亜科)
+21. tribe (族)
+22. subtribe (亜族)
+23. genus (属)
+24. subgenus (亜属)
+25. section (節)
+26. subsection (亜節)
+27. series (列)
+28. species group (種群)
+29. species subgroup (種亜群)
+30. species (種)
+31. subspecies (亜種), morph, subvariety, pathogroup, serogroup
+32. varietas (変種), biotype, genotype, serotype
+33. forma (品種)
 34. forma specialis
-35. strain
+35. strain (株)
 36. isolate
 
 subrankは、基本的には値は1になりますが、上記分類階層に当てはまらない階層が、例えばfamilyとsuperfamilyの間にある場合に、その階層をrank=18,subrank=2とすることで、familyとsuperfamilyの間の階層であることを表します。間の階層が複数ある場合は、subrankを3、4、5…と増加させていきます。なお、上記のrankの値は変更されることがあります。rank値の定義は`rank.def`に記述してあります。
