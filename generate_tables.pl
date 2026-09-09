@@ -112,6 +112,17 @@ my %JAPNAME_FIX = (
 # （中池）」は和名を当てた人の名前で、構造からは分類群名と区別できない。
 my %JAPNAME_DROP = map { $_ => 1 } ('中池');
 
+# 「階層レベルを示す単語」。README の「rank・subrankについて」に挙がっている
+# 階層名の日本語のうち、**種より上のもの**を写したもの。種より上の分類群の和名は
+# 「カナ名」とこの語の組み合わせでなければ有効名にしない (README の規定)。
+# rank 値そのものは rank.def が正だが、この日本語の語は README にしかない。
+my @JAP_RANK_WORD = qw(
+    上界 ドメイン レルム 界 亜界 上門 門 亜門 上綱 綱 亜綱 下綱
+    コホート サブコホート 上目 目 亜目 下目 小目 上科 科 亜科 族 亜族
+    属 亜属 節 亜節 列 種群 種亜群
+);
+my $JAP_RANK_WORD_RE = join '|', sort { length($b) <=> length($a) } @JAP_RANK_WORD;
+
 
 # Catalogue of Life (ColDP) の分類階級と、有効名として扱わない status。
 # 「provisionally accepted」は暫定的な有効名なので有効名として扱う。
@@ -751,8 +762,10 @@ sub merge_directory {
         my $src = $h->{src};
         for my $r (read_intermediate($h->{path})) {
             my ($jap, $sci, $jv, $sv) = @$r;
-            update_validity(\%validity, "j\t$jap", $jv, $src->{year}, $h->{order});
-            update_validity(\%validity, "s\t$sci", $sv, $src->{year}, $h->{order});
+            # 和名は「(1) より狭い分類群のソース (2) 次いでより新しいソース」、
+            # 学名は「より新しいソースか」だけで決める (README の規定)。
+            update_validity(\%validity, "j\t$jap", $jv, $src, $h->{order}, 1);
+            update_validity(\%validity, "s\t$sci", $sv, $src, $h->{order}, 0);
             push @records, [ $r, $h ];
         }
     }
@@ -769,7 +782,7 @@ sub merge_directory {
             $n_col++ if $validity{$key}[0] != $colv->{$name};
             $validity{$key}[0] = $colv->{$name};
         }
-        elsif ($validity{$key}[3] && exists $ncbiv->{$name}) {
+        elsif ($validity{$key}[4] && exists $ncbiv->{$name}) {
             $n_ncbi++ if $validity{$key}[0] != $ncbiv->{$name};
             $validity{$key}[0] = $ncbiv->{$name};
         }
@@ -789,7 +802,7 @@ sub merge_directory {
         my $a = $accepted->{$sci};
         next unless $a && length $a->[0] && $a->[0] ne $sci;
         $fixed{$sci} = $a;
-        $validity{"s\t$a->[0]"} = [ 1, 0, 0, 0 ] unless exists $validity{"s\t$a->[0]"};
+        $validity{"s\t$a->[0]"} = [ 1, 0, 0, 0, 0 ] unless exists $validity{"s\t$a->[0]"};
         $validity{"s\t$a->[0]"}[0] = 1;
     }
     logmsg('fix', sprintf('%s: シノニムとされた学名 %d 件を Catalogue of Life の有効名に差し替えました',
@@ -847,18 +860,29 @@ sub valid_of {
     return $v ? $v->[0] : 1;
 }
 
+# 有効性の表の1件は [ 有効か, scope, year, 定義順, 判定の食い違いがあったか ]。
+# $by_scope が真なら「より狭い分類群のソース」を先に見る (和名)。偽なら年と定義順
+# だけで決める (学名。README の規定で狭さは考慮しない)。
 sub update_validity {
-    my ($validity, $key, $valid, $year, $order) = @_;
+    my ($validity, $key, $valid, $src, $order, $by_scope) = @_;
     my $cur = $validity->{$key};
-    if (!$cur) { $validity->{$key} = [ $valid, $year, $order, 0 ]; return }
+    if (!$cur) {
+        $validity->{$key} = [ $valid, $src->{scope}, $src->{year}, $order, 0 ];
+        return;
+    }
     # 別のソースが違う判定をしたら印を付ける (NCBI Taxonomy を引く条件になる)
-    my $conflict = ($cur->[0] != $valid && $cur->[2] != $order) ? 1 : $cur->[3];
-    if ($cur->[1] > $year) { $cur->[3] = $conflict; return }   # 既存の方が新しい
-    if ($cur->[1] < $year) { $validity->{$key} = [ $valid, $year, $order, $conflict ]; return }
-    $cur->[3] = $conflict;
-    return if $cur->[2] < $order;                      # 同年なら定義順の先を優先
-    # 同一ソース内では有効名としての出現を優先する
-    $cur->[0] = 1 if $valid;
+    $cur->[4] = 1 if $cur->[0] != $valid && $cur->[3] != $order;
+    my $better;
+    if    ($by_scope && $src->{scope} != $cur->[1]) { $better = $src->{scope} > $cur->[1] }
+    elsif ($src->{year} != $cur->[2])               { $better = $src->{year}  > $cur->[2] }
+    elsif ($order != $cur->[3])                     { $better = $order        < $cur->[3] }
+    else {
+        # 同一ソース内では有効名としての出現を優先する
+        $cur->[0] = 1 if $valid;
+        return;
+    }
+    return unless $better;
+    $validity->{$key} = [ $valid, $src->{scope}, $src->{year}, $order, $cur->[4] ];
 }
 
 sub adopt {
@@ -1813,6 +1837,22 @@ sub is_placeholder {
     return 0;
 }
 
+# 和名が有効名の形をしているか (README の規定)。
+#   種以下 (rank >= 30) ... 「カナ名」であること。カタカナを含まない和名
+#                           (「あかざ」「お辞儀草」「平家蟹」) は有効名にしない。
+#   種より上            ... 「カナ名」と「階層レベルを示す単語」の組み合わせで
+#                           あること (「アオサ藻綱」「アーケアメーバ下門」)。
+# 「A型インフルエンザウイルス」「ヒメギフチョウ北海道亜種」のように漢字や英数字を
+# 交えた標準和名があるので、**全体がカタカナであることは求めない**。
+# この条件を満たさない和名はシノニム (japvalid=0) として出力には残る。
+sub japname_valid_form {
+    my ($jap, $rank) = @_;
+    return 0 unless defined $jap && length $jap;
+    return 0 unless $jap =~ /[\x{30A1}-\x{30FA}]/;      # カタカナを含むこと
+    return 1 if !defined $rank || $rank >= rk('species');
+    return $jap =~ /(?:$JAP_RANK_WORD_RE)\z/ ? 1 : 0;
+}
+
 # 名前が日本語の文字だけでできているか。判定は日本語の文字集合の現行規格である
 # JIS X 0213 で行う (Encode::JIS2K の euc-jisx0213)。コアの Encode が扱える
 # cp932 は JIS X 0208 までなので、`吐噶喇` の `噶`、トドの `魹`・`獱`、シメの
@@ -1866,6 +1906,9 @@ sub add_pair {
     ($rank, $subrank) = rank_from_sciname($sci)
         if $rank == rk('species')
         && $sci =~ /(?:\A| )(?:subsp|ssp|var|subvar|f|sect|nothosubsp|nothovar)\. /;
+    # 有効名の形をしていない和名はシノニム扱いにする (README の規定)。
+    # rank は上で名前の形に合わせた後の値を使う。
+    $jv = 0 if $jv && !japname_valid_form($head, $rank);
     my $nos2j = $opt{nos2j} ? 1 : 0;
     my @si = $opt{srcinfo} ? @{ $opt{srcinfo} } : ('', '', '');
     # 代表の和名が和名でないなら、その括弧内の別名も和名ではない。
