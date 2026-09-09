@@ -106,11 +106,20 @@ my %JAPNAME_FIX = (
     '野生のオリーブの木'     => '野生型オリーブの木',
     '野生エマー小麦'         => '野生型エンマーコムギ',
     '長江の淡水性スナメリ'   => '長江スナメリ',
+    # 連結の中黒をハイフンで書いたもの。語中のハイフンは
+    # 「デイノコッカス-サーマス門」のような正しい連結と形が同じなので個別に直す。
+    'デイノコッカス-サーマス門' => 'デイノコッカス・サーマス門',
+    '羊-山羊ハイブリッド'       => '羊・山羊ハイブリッド',
 );
 
 # 語彙でしか和名でないと判定できないもの。FernGreenList の「コウシュンシダ
 # （中池）」は和名を当てた人の名前で、構造からは分類群名と区別できない。
-my %JAPNAME_DROP = map { $_ => 1 } ('中池');
+# 「緑藻綱-車軸藻綱」「不等毛植物門-ハプト植物門」は重ならない別の分類群を
+# 繋いだもので、分類群の名前として意味を成さない。
+my %JAPNAME_DROP = map { $_ => 1 }
+    ('中池', '緑藻綱-車軸藻綱', '不等毛植物門-ハプト植物門', 'ラフィド藻綱-ハプト藻綱',
+     # 和名の欄に学名と著者名が入り込んだもの
+     'ツクモハイゴケ.Heterocladium.Bruch&Schimp.イセノイトツルゴケ属');
 
 # 「階層レベルを示す単語」。README の「rank・subrankについて」に挙がっている
 # 階層名の日本語のうち、**種より上のもの**を写したもの。種より上の分類群の和名は
@@ -153,6 +162,18 @@ my %COL_INVALID_STATUS = map { $_ => 1 } (
 # ファイル後方の実行ブロックより前に置かないと代入前に参照されてしまう。
 # 生成ルーチンの指紋。build_code_digests() が起動時に埋める。
 my ($COMMON_DIGEST, %PARSER_DIGEST);
+
+# 括弧の対応が取れていない和名を落とした記録。パースの誤りか情報源の欠けかを
+# 追えるように <ソースID>.tsv.rejected へ書き出す (--keep で残る)。
+my ($CURRENT_SRC, @REJECTED);
+
+# 和名に使う括弧。開きと閉じの数が合わない和名は、情報源の欄が途中で切れて
+# いるか、こちらの切り出しが誤っている。名前として信用できない。
+# **数は種類ごとではなく総数で見る。** 「ヤマノイモ（山の芋)」「ニホンヒゲナガ
+# ケンミジンコ(成体）」のように半角と全角を混ぜて書く情報源があり、種類ごとに
+# 数えると対になっているものまで落としてしまう。
+my $JAPNAME_BRACKET_OPEN  = qr/[（(\[［「『【〔《]/;
+my $JAPNAME_BRACKET_CLOSE = qr/[）)\]］」』】〕》]/;
 
 # HTML の実体参照。数値参照と、情報源に実際に現れる名前付き参照だけを解く。
 my %HTML_ENTITY = (
@@ -469,7 +490,7 @@ my $basedir;
 my @only;
 my @only_source;
 my $force     = 0;
-my $keep      = 0;    # 既定で残すので受け付けるだけの互換オプション
+my $keep      = 0;    # 診断用の <ソースID>.tsv.rejected を残す
 my $clean     = 0;
 my $opt_ver;
 my $opt_build;
@@ -593,6 +614,7 @@ sub do_source {
         return;
     }
 
+    ($CURRENT_SRC, @REJECTED) = ($src);
     my $records = eval { do_parse($src, \@paths) };
     if ($@) {
         my $why = $@; $why =~ s/\s+\z//;
@@ -602,11 +624,26 @@ sub do_source {
     $records = [] unless ref $records eq 'ARRAY';
 
     my $n = write_intermediate($out, $records);
+    write_rejected($src);
     write_fingerprint($fppath, $fp);
     $n_parsed++;
     $n_records += $n;
     logmsg('parse', sprintf('%d ファイル -> %s (%d レコード)',
                             scalar @paths, relname($out), $n));
+}
+
+# 落としたレコードを <ソースID>.tsv.rejected に書く。パースの誤りか情報源の欠けかを
+# 後から追えるようにするためのもので、--keep を付けない限り実行の最後に消す。
+sub write_rejected {
+    my ($src) = @_;
+    my $path = intermediate_path($src) . '.rejected';
+    unless (@REJECTED) { unlink $path if -e $path; return }
+    open my $fh, '>', $path or return;
+    binmode $fh, ':encoding(UTF-8)';
+    print $fh join("\t", @$_), "\n" for @REJECTED;
+    close $fh;
+    note($src, sprintf('括弧の対応が取れていない和名 %d 件を落としました (%s)',
+                       scalar @REJECTED, relname($path)));
 }
 
 # ソースごとのパーサへの振り分け。fetch_data.pl と同じくコードリファレンスの表は
@@ -711,6 +748,15 @@ sub read_intermediate {
     return @out;
 }
 
+# --keep が無ければ診断用のファイルを消す。中間 TSV は差分判定に要るので残す。
+sub cleanup_rejected {
+    my ($sources) = @_;
+    for my $src (@$sources) {
+        my $p = intermediate_path($src) . '.rejected';
+        unlink $p if -e $p;
+    }
+}
+
 sub cleanup_intermediates {
     my ($sources) = @_;
     my %dirs;
@@ -718,6 +764,7 @@ sub cleanup_intermediates {
         my $p = intermediate_path($src);
         unlink $p if -e $p;
         unlink "$p.fp" if -e "$p.fp";
+        unlink "$p.rejected" if -e "$p.rejected";
         $dirs{ dirname($p) } = 1;
         unlink File::Spec->catfile(dirname($p), 'merge.fp');
     }
@@ -1032,7 +1079,8 @@ sub usage {
   --source=ID           ソース ID を限定する (複数指定可)
   --force               既存の中間 TSV・展開済み zip も作り直す
   --clean               中間 TSV を最後に削除する (既定は残す)
-  --keep                何もしない (中間 TSV を残すのが既定になったため)
+  --keep                落としたレコードの記録 (<ソースID>.tsv.rejected) を残す
+                        中間 TSV は既定で残るので指定しなくてよい
   --version=X.Y.Z       VERSION ファイルの値を上書きする
   --builddate=YYYYMMDD  ビルド日 (既定: 実行日) を上書きする
   --list                ソース定義テーブルを表示して終了する (パースしません)
@@ -1216,6 +1264,18 @@ sub xlsx_member {
     return $buf;
 }
 
+# xlsx は制御文字を「_x000D_」のようなエスケープで書く。実データでは実際の改行と
+# 併記されていて (「フチトリコメツキダ_x000D_\r\nマシ属」)、そのまま読むと文字列が
+# 名前に残るので落とす。「_x005F_」でエスケープされた下線は元に戻す。
+sub strip_xlsx_escapes {
+    my ($s) = @_;
+    return $s unless defined $s && index($s, '_x') >= 0;
+    $s =~ s/_x005F_/\x00/g;
+    $s =~ s/_x[0-9A-Fa-f]{4}_//g;
+    $s =~ s/\x00/_/g;
+    return $s;
+}
+
 sub xml_unescape {
     my ($s) = @_;
     return '' unless defined $s;
@@ -1243,7 +1303,7 @@ sub xlsx_shared_strings {
         $si =~ s{<phoneticPr\b[^>]*/>}{}gs;
         my $t = '';
         $t .= xml_unescape($1) while $si =~ m{<t(?:\s[^>]*)?>(.*?)</t>}gs;
-        push @out, $t;
+        push @out, strip_xlsx_escapes($t);
     }
     return \@out;
 }
@@ -1351,6 +1411,7 @@ sub xlsx_row {
                 my $is = $cbody;
                 $is =~ s{<rPh\b.*?</rPh>}{}gs;
                 $val .= xml_unescape($1) while $is =~ m{<t(?:\s[^>]*)?>(.*?)</t>}gs;
+                $val = strip_xlsx_escapes($val);
             }
             elsif (defined $ty && $ty eq 's') {
                 $val = (defined $ss->[$1] ? $ss->[$1] : '') if $cbody =~ m{<v>(.*?)</v>}s;
@@ -1525,6 +1586,20 @@ sub squeeze {
 sub strip_japnotes {
     my ($s) = @_;
     return '' unless defined $s;
+    # HTML コメント。Wikidata と Catalogue of Life の和名欄に混入している
+    # (「アッサムモグラ<!--Talpaleucura-->」「<!--キイチゴ-->」)。切れ端しか
+    # 残っていないものもあるので、対になっていない印から先も落とす。
+    $s =~ s/<!--.*?-->//gs;
+    $s =~ s/<!--.*\z//s;
+    $s =~ s/\A.*-->//s;
+    # 括弧の中の空白は詰める。ハネカクシの PDF は「（ 和 名 新 称 ）」のように
+    # 字の間に空白を入れるので、詰めないと注記として判定できず、括弧の対応も
+    # 取れなくなる。和名に空白は入らないので詰めて困ることはない。
+    $s =~ s{([（(\[［])([^）)\]］]*)([）)\]］])}{
+                my ($o, $in, $c) = ($1, $2, $3);   # 入れ子の s/// が $1 を壊す
+                $in =~ s/\s+//g;
+                "$o$in$c";
+            }gex;
     for my $note (@JAPNAME_NOTES) {
         my $q = quotemeta $note;
         $s =~ s/$q//g;
@@ -1532,16 +1607,17 @@ sub strip_japnotes {
     # 括弧に入れた編集上の注記。名前ではないので括弧ごと落とす。
     # 「ナンキンシマアツバ（誤記）」「ヒヨドリバナ (二倍体)」「HOK?（註１）」など。
     my $note = qr/\s*(?:註\s*[0-9０-９]*|誤字|誤記|誤用|統合|和名交換|下位同物異名
-                   |二倍体|倍数体|新称|改称|仮称|旧称|別称|同名注意)(?:予定)?\s*[？?]?\s*/x;
+                   |二倍体|倍数体|新称|改称|仮称|旧称|別称|同名注意
+                   |成体|幼体|若齢|老熟|雌|雄)(?:予定)?\s*[？?]?\s*/x;
     $s =~ s/[（(]$note[）)]//g;
-    $s =~ s/\[$note\]//g;
+    $s =~ s/[\[［]$note[\]］]//g;
     # 括弧に入れた文献の引用。数字・ラテン文字・コロンを含むものがそれで、
     # 末尾とは限らない。「トカラシュスラン (Hatus., 改訂鹿児島県植物目録: 230,
     # 1986)， クニガミシュスラン」のように別名の並びの途中に挟まる。
     $s =~ s/[（(][^）)]*[0-9０-９A-Za-z：:][^）)]*[）)]//g;
     # 角括弧の中には丸括弧が入る (「[本上科の高次分類体系は Pulawski (2016)に
     # 従った．]」)。丸括弧と同じ文字クラスで扱うと途中で切れるので別に落とす。
-    $s =~ s/\[[^\[\]]*[0-9０-９A-Za-z：:][^\[\]]*\]//g;
+    $s =~ s/[\[［][^\[\]［］]*[0-9０-９A-Za-z：:][^\[\]［］]*[\]］]//g;
     return $s;
 }
 
@@ -1569,12 +1645,15 @@ sub norm_japname {
     # ような書き方があるので、両端だけでなく全て除く (学名側は「Cobitis sp.
     # 'yamato'」の引用符を残すので norm_sciname では行わない)。
     $s =~ s/['"\x{2018}\x{2019}]//g;
-    # 全体を角括弧で括った書き方は括弧だけ外す (「[アシブトヒメハマキ]」)。
-    # それ以外の角括弧は注記なので中身ごと落とし (「カラクサイノデ[中池]」)、
-    # 対の取れていない括弧は落とす (「エゾギク]]」)。
-    $s =~ s/\A\s*\[([^\[\]]*)\]\s*\z/$1/;
-    $s =~ s/\[[^\[\]]*\]//g;
-    $s =~ s/[\[\]]//g;
+    # 中黒の異体字 (U+00B7) は「・」にする (「ブラウン·パームシベット」)
+    $s =~ s/\x{00B7}/\x{30FB}/g;
+    # 全体を括弧で括った書き方は括弧だけ外す (「[アシブトヒメハマキ]」)。
+    # それ以外の括弧は注記なので中身ごと落とし (「カラクサイノデ[中池]」)、
+    # 対の取れていない括弧は落とす (「エゾギク]]」)。split_japsyn を通らない経路
+    # (「コナラ (小楢)/ホウソ」を「/」で分けた破片など) もここに来る。
+    $s =~ s/\A\s*[（(\[［]([^（()）\[\]［］]*)[）)\]］]\s*\z/$1/;
+    $s =~ s/[（(\[［][^（()）\[\]［］]*[）)\]］]//g;
+    $s =~ s/[（()）\[\]［］「」]//g;
     $s = squeeze($s);
     $s =~ s/[．。\.]+\z//;
     $s =~ s/\A[\s・,、，\x{201C}\x{201D}"]+//;
@@ -1694,18 +1773,19 @@ sub split_japsyn {
     $s =~ s/\x{3000}//g;
     # 全体を角括弧で括った書き方がある (List-MJ の「[アシブトヒメハマキ]」)。
     # 別名ではなく名前そのものなので括弧だけ外す。
-    $s =~ s/\A\s*\[([^\[\]]*)\]\s*\z/$1/;
+    $s =~ s/\A\s*[\[［]([^\[\]［］]*)[\]］]\s*\z/$1/;
     my @syn;
-    # 括弧の中身は別名。閉じ括弧が欠けている情報源があるので末尾まで許す。
-    # ただし数字・ラテン文字・コロンを含むものは文献の引用なので別名ではない。
-    # 「トカラシュスラン (Hatus., 改訂鹿児島県植物目録: 230, 1986)」など。
-    while (1) {
-        my $inner;
-        if    ($s =~ s/[（(]([^）)]*)[）)]?\s*\z//) { $inner = $1 }
-        elsif ($s =~ s/\[([^\[\]]*)\]\s*\z//)   { $inner = $1 }
-        else { last }
+    # 括弧の中身は別名。**括弧の後ろに続く部分は代表にも別名にも付ける**
+    # (「エダコケムシ（トゲコケムシ）科」→「エダコケムシ科」と「トゲコケムシ科」、
+    #  「アズマケボリ［キーンツグチ］」→「アズマケボリ」と「キーンツグチ」)。
+    # 閉じ括弧が欠けている情報源があるので閉じは無くてもよい。数字・ラテン文字・
+    # コロンを含むものは文献の引用なので別名ではない
+    # (「トカラシュスラン (Hatus., 改訂鹿児島県植物目録: 230, 1986)」)。
+    while ($s =~ s/\A([^（(\[［]*)[（(\[［]([^）)\]］]*)[）)\]］]?(.*)\z/$1$3/s) {
+        my ($inner, $after) = ($2, $3);
+        next unless length $inner;
         next if $inner =~ /[0-9０-９A-Za-z：:]/;
-        unshift @syn, $inner;
+        push @syn, $inner . $after;
     }
     # 括弧の外は既定では「・」で切らない (「日本本土・大陸亜種」のような修飾語を
     # 壊すため)。「・」で別名を併記する情報源だけが $seps で明示的に指定する。
@@ -1837,6 +1917,22 @@ sub is_placeholder {
     return 0;
 }
 
+# 括弧の開きと閉じの数が合っているか。合っていなければ対の文字を返す。
+sub unbalanced_brackets {
+    my ($s) = @_;
+    return '' unless defined $s && length $s;
+    my $open  = () = $s =~ /$JAPNAME_BRACKET_OPEN/g;
+    my $close = () = $s =~ /$JAPNAME_BRACKET_CLOSE/g;
+    return '' if $open == $close;
+    return $open > $close ? '開き括弧が多い' : '閉じ括弧が多い';
+}
+
+sub reject_japname {
+    my ($jap, $sci, $why) = @_;
+    push @REJECTED, [ ($CURRENT_SRC ? $CURRENT_SRC->{id} : ''), $why,
+                      (defined $jap ? $jap : ''), (defined $sci ? $sci : '') ];
+}
+
 # 和名が有効名の形をしているか (README の規定)。
 #   種以下 (rank >= 30) ... 「カナ名」であること。カタカナを含まない和名
 #                           (「あかざ」「お辞儀草」「平家蟹」) は有効名にしない。
@@ -1885,6 +1981,13 @@ sub japanese_chars {
 # それも和名シノニムとして足す。
 sub add_pair {
     my ($out, $jap, $sci, $rank, $subrank, %opt) = @_;
+    # 括弧の対応が取れていない和名はレコードごと落とす。「ミサキヤドカリ
+    # ［エビスヤドカリ」のように欄が途中で切れているか、こちらの切り出しが
+    # 誤っているかのどちらかで、どちらにしても名前として信用できない。
+    if (my $bad = unbalanced_brackets($jap)) {
+        reject_japname($jap, $sci, "括弧の対応なし $bad");
+        return;
+    }
     # rawsci は学名欄に著者名が入らない情報源用。norm_sciname の
     # 「名前らしいトークンだけ採る」規則は ICTV の Alfamovirus AMV や
     # Duamitovirus crpa1 のような種小名を切り落としてしまう。
@@ -4223,6 +4326,7 @@ unless ($dry_run) {
         merge_directory($dir, [ grep { $_->{dir} eq $dir } @SOURCES ], $colv, $ncbiv, $accepted);
     }
     cleanup_intermediates(\@selected) if $clean;
+    cleanup_rejected(\@selected) if !$keep && !$clean;
 }
 
 report_summary();
