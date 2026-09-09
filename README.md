@@ -9,7 +9,7 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
 1. データファイルをダウンロード
 2. 和名→学名および学名→和名テーブルのTSVを生成
 3. 和名→学名および学名→和名変換テーブルを持つSQLite3 DBを生成
-4. 和名読み→和名および和名読み→学名を日本語入力IMEで実現する辞書ファイルTSV (汎用・Mozcユーザー辞書用・Mozcシステム辞書用)を生成
+4. 和名読み→和名および和名読み→学名を日本語入力IMEで実現する辞書ファイルTSV (汎用・Mozcユーザー辞書用・Mozcシステム辞書用・Gboard単語リスト用)を生成
 
 をそれぞれ行うスクリプトを本リポジトリで配布し、各ユーザーが自ら自分に必要なファイルをローカル環境で生成して使用するものとする。
 
@@ -262,6 +262,14 @@ yomi    japname    pos    comment
 
 実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、和名シノニムの読みから有効名の和名を返す行と、和名シノニムの読みから和名シノニムを返す行も出力される。posはデフォルトでは常に`名詞`。`--for=mozc-user`のとき、`短縮読み`になる。commentにはsourcetitle, sourceauthor, sourceurlが「sourcetitle (sourceurl) by sourceauthor」として含まれる。
 
+`--for=gboard`のとき、出力フォーマットは以下に変更される。
+
+```
+yomi    japname    lang    pos
+```
+
+langは常に`ja-JP`、posは常に`短縮読み`である。
+
 `--for=mozc-system`のとき、出力フォーマットは以下に変更される。
 
 ```
@@ -277,6 +285,14 @@ yomi    sciname    pos    comment
 ```
 
 実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、和名シノニムの読みから有効名の学名を返す行も出力される。学名のシノニムは出力されない。posはデフォルトでは常に`名詞`。`--for=mozc-user`のとき、`短縮読み`になる。commentにはsourcetitle, sourceauthor, sourceurlが「sourcetitle (sourceurl) by sourceauthor」として含まれる。
+
+`--for=gboard`のとき、出力フォーマットは以下に変更される。
+
+```
+yomi    sciname    lang    pos
+```
+
+langは常に`ja-JP`、posは常に`短縮読み`である。
 
 `--for=mozc-system`のとき、出力フォーマットは以下に変更される。
 
