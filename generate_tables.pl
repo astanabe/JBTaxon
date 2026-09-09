@@ -88,6 +88,10 @@ my %JAPNAME_FIX = (
     'アオゾメキロキツネガサ' => 'アオゾメキイロキツネガサ',
 );
 
+# 語彙でしか和名でないと判定できないもの。FernGreenList の「コウシュンシダ
+# （中池）」は和名を当てた人の名前で、構造からは分類群名と区別できない。
+my %JAPNAME_DROP = map { $_ => 1 } ('中池');
+
 # Catalogue of Life (ColDP) の分類階級と、有効名として扱わない status。
 # 「provisionally accepted」は暫定的な有効名なので有効名として扱う。
 my %COL_RANK = (
@@ -1435,6 +1439,14 @@ sub strip_japnotes {
         my $q = quotemeta $note;
         $s =~ s/$q//g;
     }
+    # 括弧に入れた編集上の注記。名前ではないので括弧ごと落とす。
+    # 「ナンキンシマアツバ（誤記）」「ヒヨドリバナ (二倍体)」「HOK?（註１）」など。
+    $s =~ s/[（(]\s*(?:註\s*[0-9０-９]*|誤字|誤記|誤用|統合|和名交換|下位同物異名
+             |二倍体|倍数体|新称|改称|仮称|旧称|別称)(?:予定)?\s*[？?]?\s*[）)]//gx;
+    # 括弧に入れた文献の引用。数字・ラテン文字・コロンを含むものがそれで、
+    # 末尾とは限らない。「トカラシュスラン (Hatus., 改訂鹿児島県植物目録: 230,
+    # 1986)， クニガミシュスラン」のように別名の並びの途中に挟まる。
+    $s =~ s/[（(][^）)]*[0-9０-９A-Za-z：:][^）)]*[）)]//g;
     return $s;
 }
 
@@ -1525,8 +1537,11 @@ sub split_japsyn {
     $s =~ s/\x{3000}//g;
     my @syn;
     # 括弧の中身は別名。閉じ括弧が欠けている情報源があるので末尾まで許す。
+    # ただし数字・ラテン文字・コロンを含むものは文献の引用なので別名ではない。
+    # 「トカラシュスラン (Hatus., 改訂鹿児島県植物目録: 230, 1986)」など。
     while ($s =~ s/[（(]([^）)]*)[）)]?\s*\z//) {
         my $inner = $1;
+        next if $inner =~ /[0-9０-９A-Za-z：:]/;
         unshift @syn, $inner;
     }
     # 括弧の外は既定では「・」で切らない (「日本本土・大陸亜種」のような修飾語を
@@ -1542,6 +1557,8 @@ sub split_japsyn {
 sub split_japnames {
     my ($s, $seps) = @_;
     return () unless defined $s;
+    # 引用や注記は別名の並びの途中にも挟まるので、分ける前に落とす。
+    $s = strip_japnotes($s);
     $seps = '，、,・；;' unless defined $seps;
     my $re = '[' . quotemeta($seps) . ']';
     my @out;
@@ -1608,8 +1625,9 @@ sub is_placeholder {
     return 1 if $jap !~ /[\x{3040}-\x{30FF}\x{4E00}-\x{9FFF}\x{FF66}-\x{FF9D}]/;
     return 1 if $jap =~ /\A[A-Za-z][A-Za-z0-9 .()\x{2019}'-]*(?:属|亜属|節|科|亜科|族|亜族|目|亜目|上科|綱|亜綱|門|亜門|界|種|亜種)\z/;
     # 「〜属の一種」「〜の一種の幼虫」のような未同定の記載は和名ではない
-    return 1 if $jap =~ /の(?:1|一)種\s*\d*(?:の幼虫|の成虫)?\z/;
+    return 1 if $jap =~ /の(?:(?:1|一)種|不明種)\s*\d*(?:の幼虫|の成虫)?\z/;
     return 1 if $jap =~ /\A(?:和名保留|所属科不明|所属不明|科不明|属不明)\z/;
+    return 1 if $JAPNAME_DROP{$jap};
     # 「名部みち代新称」「澤田1944」のような命名者や文献の記載
     return 1 if $jap =~ /新称\z/;
     return 1 if $jap =~ /\d{4}\z/;
@@ -1648,6 +1666,9 @@ sub add_pair {
     $_ = strip_trailing_sciname($_, $sci) for ($head, @syn);
     my $nos2j = $opt{nos2j} ? 1 : 0;
     my @si = $opt{srcinfo} ? @{ $opt{srcinfo} } : ('', '', '');
+    # 代表の和名が和名でないなら、その括弧内の別名も和名ではない。
+    # 「キクスイモドキカミキリ属の不明種（東北個体群）」など。
+    @syn = () if length $head && is_placeholder($head, $sci);
     if (length $head && !is_placeholder($head, $sci)) {
         push @$out, [ $head, $sci, $jv, $sv, $rank, $subrank, $nos2j, @si ];
     }
@@ -2136,7 +2157,7 @@ sub parse_shigainsect {
             my $ci = $idx->('異名・旧名');
             return unless defined $ci && length $f[$ci];
             my $canon = norm_sciname($sci);
-            for my $seg (split_mixed_names($f[$ci])) {
+            for my $seg (split_mixed_names(strip_japnotes($f[$ci]))) {
                 my ($type, $tok) = @$seg;
                 if ($type eq 'jap') {
                     next unless length $tok >= 2;
@@ -3040,6 +3061,12 @@ sub parse_staphylinidae {
             my $sci  = join ' ', $genus, @ep;
             my $rank = @ep >= 2 ? rk('subspecies') : rk('species');
             my $jap  = japanese_run($rec, 0);
+            # 和名は分布記号 (HOK, HON …) の手前に来る。分布記号の後ろにある
+            # 日本語は「下位同物異名予定」のような編集上の覚え書きで和名ではない。
+            # 分布記号は「HOK」「Yak, Amm」「China」のように大文字で始まるラテン語で、
+            # その直後に来る日本語は覚え書きである。有効な和名は年や「(属名)」の
+            # 直後に来るので、この判定で落ちることはない。
+            $jap = '' if length $jap && $rec =~ /[A-Z][A-Za-z-]*[,;\s]+\s*\Q$jap\E/;
             if ($scivalid) {
                 $species  = $ep[0];
                 $last_jap = $jap;
@@ -3208,8 +3235,17 @@ sub parse_aculeata {
                 next;
             }
             next unless $line =~ /\A[A-Z][a-z]+\s+[a-z]/;
-            my $jap = despace_japanese(japanese_run($line, 0));
-            next unless length $jap;
+            # 和名の後ろには空白を挟んで分布欄 (「本，四，九，屋，伊；朝」) が続く。
+            # japanese_run は日本語に挟まれた空白を連なりに含めてしまうので、
+            # ここでは空白で区切られた最初の日本語の塊だけを採る。
+            my ($run) = $line =~ /([\x{3040}-\x{30FF}\x{4E00}-\x{9FFF}\x{FF66}-\x{FF9D}\x{3005}\x{30FC}]+)/;
+            my $jap = despace_japanese(defined $run ? $run : '');
+            # 「Polistes jokahamae ssp.：高見沢，2005」のように和名の手前に「：」が
+            # ある行は文献の記録であって和名ではない。
+            next if length $jap && $line =~ /[：:][^\x{3040}-\x{9FFF}]*\Q$jap\E/;
+            # 和名が取れなかった行では分布欄の記号 (「九」「日本」) が先頭の
+            # 日本語になる。この情報源の和名は必ず3文字以上あるので長さで弾く。
+            next unless length($jap) >= 3;
             my $sci = norm_sciname($line);
             next unless length $sci;
             # この情報源は和名の別名を「・」で併記する
@@ -3559,7 +3595,9 @@ sub parse_jsv_virus {
         my $first = 1;
         read_xlsx($path, 0, sub {
             my ($rn, $c) = @_;
-            my @f = map { defined $_ ? squeeze($_) : '' } @$c;
+            # 和名の欄はセル内改行で複数の和名を並べるので、改行は潰さずに残す。
+            my @raw = map { defined $_ ? $_ : '' } @$c;
+            my @f   = map { squeeze($_) } @raw;
             if ($first) {
                 $first = 0;
                 for my $i (0 .. $#f) {
@@ -3569,10 +3607,21 @@ sub parse_jsv_virus {
                 return;
             }
             return unless defined $ic_sp && defined $ic_ja;
-            my ($sci, $jap) = ($f[$ic_sp] // '', $f[$ic_ja] // '');
-            return unless length $sci && length $jap;
+            my $sci = $f[$ic_sp] // '';
+            return unless length $sci;
+            my @jap = grep { length } map { squeeze($_) } split /\r?\n/, ($raw[$ic_ja] // '');
+            # 括弧の中身が短く区切り文字を含まないものは別名ではなく修飾語なので、
+            # 括弧だけ外して繋ぐ (「東部馬脳炎ウイルス（北米型）」→
+            # 「東部馬脳炎ウイルス北米型」)。長いものや「、」を含むものは別名。
+            for my $j (@jap) {
+                $j =~ s/[（(]([^（()）、,]{1,6})[）)]/$1/g;
+            }
+            return unless @jap;
             my ($rank, $subrank) = rank_from_sciname($sci);
-            add_pair(\@out, $jap, $sci, $rank, $subrank, rawsci => 1);
+            for my $i (0 .. $#jap) {
+                add_pair(\@out, $jap[$i], $sci, $rank, $subrank,
+                         rawsci => 1, japvalid => ($i == 0 ? 1 : 0));
+            }
         });
         note($src, '列を特定できませんでした: ' . relname($path))
             unless defined $ic_sp && defined $ic_ja;
