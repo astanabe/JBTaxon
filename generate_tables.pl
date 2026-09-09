@@ -23,6 +23,7 @@ use strict;
 use warnings;
 use utf8;
 use Cwd qw(abs_path);
+use Digest::SHA qw(sha1_hex);
 use Encode ();
 use File::Basename qw(basename dirname);
 use File::Path qw(make_path);
@@ -108,6 +109,9 @@ my %COL_INVALID_STATUS = map { $_ => 1 } (
 );
 
 # ファイル後方の実行ブロックより前に置かないと代入前に参照されてしまう。
+# 生成ルーチンの指紋。build_code_digests() が起動時に埋める。
+my ($COMMON_DIGEST, %PARSER_DIGEST);
+
 # HTML の実体参照。数値参照と、情報源に実際に現れる名前付き参照だけを解く。
 my %HTML_ENTITY = (
     'nbsp' => "\x{00A0}", 'amp' => '&', 'lt' => '<', 'gt' => '>', 'quot' => '"',
@@ -423,7 +427,8 @@ my $basedir;
 my @only;
 my @only_source;
 my $force     = 0;
-my $keep      = 0;
+my $keep      = 0;    # 既定で残すので受け付けるだけの互換オプション
+my $clean     = 0;
 my $opt_ver;
 my $opt_build;
 my $do_list   = 0;
@@ -437,6 +442,7 @@ GetOptions(
     'source=s'    => \@only_source,
     'force'       => \$force,
     'keep'        => \$keep,
+    'clean'       => \$clean,
     'version=s'   => \$opt_ver,
     'builddate=s' => \$opt_build,
     'list'        => \$do_list,
@@ -484,6 +490,7 @@ unless ($BUILDDATE =~ /^\d{8}$/) {
     exit 2;
 }
 my %RANK = read_rank_def();
+build_code_digests();
 
 #-----------------------------------------------------------------------------
 # 実行
@@ -536,9 +543,11 @@ sub do_source {
         return;
     }
 
-    if (-e $out && !$force) {
+    my $fppath = "$out.fp";
+    my $fp     = source_fingerprint($src, \@paths);
+    if (-e $out && !$force && read_fingerprint($fppath) eq $fp) {
         $n_skipped++;
-        logmsg('skip', relname($out) . ' (--force で作り直します)');
+        logmsg('skip', relname($out) . ' (生成ルーチンも入力も変わっていません)');
         return;
     }
 
@@ -551,6 +560,7 @@ sub do_source {
     $records = [] unless ref $records eq 'ARRAY';
 
     my $n = write_intermediate($out, $records);
+    write_fingerprint($fppath, $fp);
     $n_parsed++;
     $n_records += $n;
     logmsg('parse', sprintf('%d ファイル -> %s (%d レコード)',
@@ -665,7 +675,9 @@ sub cleanup_intermediates {
     for my $src (@$sources) {
         my $p = intermediate_path($src);
         unlink $p if -e $p;
+        unlink "$p.fp" if -e "$p.fp";
         $dirs{ dirname($p) } = 1;
+        unlink File::Spec->catfile(dirname($p), 'merge.fp');
     }
     rmdir $_ for keys %dirs;    # 空でなければ黙って失敗する
 }
@@ -688,6 +700,16 @@ sub merge_directory {
     }
     unless (@have) {
         logmsg('info', "$dir: 中間 TSV がないので統合をスキップします");
+        return;
+    }
+
+    # 中間 TSV も参照データも変わっていなければ統合ごと飛ばす。
+    my $mfp  = merge_fingerprint($dir, \@have);
+    my $mpath = File::Spec->catfile($basedir, $dir, $WORKDIR_NAME, 'merge.fp');
+    my @finals = map { File::Spec->catfile($basedir, $dir, "${_}_${VERSION}_${BUILDDATE}.tsv") }
+                 ('japname2sciname', 'sciname2japname');
+    if (!$force && (grep { -e $_ } @finals) == 2 && read_fingerprint($mpath) eq $mfp) {
+        logmsg('skip', "$dir: 出力は最新です");
         return;
     }
 
@@ -766,9 +788,26 @@ sub merge_directory {
 
     my $j2s = write_final($dir, 'japname2sciname', \%adopt_j2s, \%validity, 'j');
     my $s2j = write_final($dir, 'sciname2japname', \%adopt_s2j, \%validity, 's');
+    write_fingerprint($mpath, $mfp);
     $n_written += $j2s + $s2j;
     logmsg('merge', sprintf('%s: %d ソース / %d レコード -> japname2sciname %d 行 / sciname2japname %d 行',
                             $dir, scalar @have, scalar @records, $j2s, $s2j));
+}
+
+# 統合の入力: 中間 TSV と、有効性の判定に使う外部データ。
+sub merge_fingerprint {
+    my ($dir, $have) = @_;
+    my @parts = ($VERSION, $BUILDDATE, (defined $COMMON_DIGEST ? $COMMON_DIGEST : ''));
+    for my $h (@$have) {
+        my @st = stat $h->{path};
+        push @parts, join(':', $h->{src}{id}, (@st ? ($st[7], $st[9]) : ('', '')));
+    }
+    for my $ref (File::Spec->catfile($basedir, 'AllTaxa', 'NameUsage.tsv'),
+                 File::Spec->catfile($basedir, 'NCBITaxonomy', 'names.dmp')) {
+        my @st = stat $ref;
+        push @parts, join(':', basename($ref), (@st ? ($st[7], $st[9]) : ('', '')));
+    }
+    return digest_parts(@parts);
 }
 
 sub valid_of {
@@ -894,7 +933,7 @@ sub list_sources {
     }
     print "\n最終出力: <ディレクトリ>/japname2sciname_VERSION_BUILDDATE.tsv\n";
     print "          <ディレクトリ>/sciname2japname_VERSION_BUILDDATE.tsv\n";
-    print "中間出力: <ディレクトリ>/$WORKDIR_NAME/<ソースID>.tsv (--keep で残す)\n";
+    print "中間出力: <ディレクトリ>/$WORKDIR_NAME/<ソースID>.tsv (--clean で削除する)\n";
 }
 
 sub report_summary {
@@ -937,7 +976,8 @@ sub usage {
   --only=NAME           分類群ディレクトリを限定する (複数指定可)
   --source=ID           ソース ID を限定する (複数指定可)
   --force               既存の中間 TSV・展開済み zip も作り直す
-  --keep                中間 TSV を削除せず残す (既定は削除)
+  --clean               中間 TSV を最後に削除する (既定は残す)
+  --keep                何もしない (中間 TSV を残すのが既定になったため)
   --version=X.Y.Z       VERSION ファイルの値を上書きする
   --builddate=YYYYMMDD  ビルド日 (既定: 実行日) を上書きする
   --list                ソース定義テーブルを表示して終了する (パースしません)
@@ -3637,6 +3677,89 @@ sub external_validity {
 }
 
 #-----------------------------------------------------------------------------
+# 生成ルーチンの指紋
+#
+# 修正のたびに全ソースを作り直さずに済むよう、ソースごとに「作り直しが必要か」を
+# 指紋で判定する。指紋は中間 TSV の隣に <ソースID>.tsv.fp として置く。
+#
+# 指紋に含めるもの:
+#   - VERSION と BUILDDATE (どちらかが変われば全て作り直す)
+#   - 本スクリプトの共通部分のダイジェスト (norm_sciname などを直したら全て作り直す)
+#   - そのソースのパーサ部分のダイジェスト (1つのパーサを直したらそれだけ作り直す)
+#   - @SOURCES のそのエントリ
+#   - 入力ファイルの一覧・サイズ・更新時刻 (生データが変わったら作り直す)
+#
+# 共通部分とパーサ部分は「#---」の罫線でセクションに切り、`sub parse_<名前>` を
+# ちょうど1つ定義しているセクションだけをそのパーサのものとみなす。パーサ固有の
+# 補助サブ (col_scan、jaflist_scinames など) は同じセクションに置いてあるので
+# 一緒に扱われる。判定できないものは共通部分に入れるので、取りこぼして作り直しを
+# 忘れることはない (余分に作り直す方向に倒れる)。
+#-----------------------------------------------------------------------------
+sub build_code_digests {
+    open my $fh, '<', abs_path($0) or return;
+    binmode $fh;
+    local $/;
+    my $src = <$fh>;
+    close $fh;
+    return unless defined $src;
+
+    my @sections = split /^(?=#-{20,}\s*$)/m, $src;
+    my (@common, %parser);
+    for my $sec (@sections) {
+        my @def = $sec =~ /^sub\s+parse_(\w+)\s*\{/mg;
+        if (@def == 1) { $parser{ $def[0] } .= $sec }
+        else           { push @common, $sec }
+    }
+    $COMMON_DIGEST = sha1_hex(join '', @common);
+    $PARSER_DIGEST{$_} = sha1_hex($parser{$_}) for keys %parser;
+}
+
+# ハッシュや配列を決まった順で1つの文字列にする。
+sub flatten_value {
+    my ($v) = @_;
+    return '' unless defined $v;
+    return '[' . join(',', map { flatten_value($_) } @$v) . ']' if ref $v eq 'ARRAY';
+    return '{' . join(',', map { "$_=" . flatten_value($v->{$_}) } sort keys %$v) . '}'
+        if ref $v eq 'HASH';
+    return $v;
+}
+
+sub source_fingerprint {
+    my ($src, $paths) = @_;
+    my @parts = ($VERSION, $BUILDDATE,
+                 (defined $COMMON_DIGEST ? $COMMON_DIGEST : ''),
+                 (defined $PARSER_DIGEST{ $src->{parser} } ? $PARSER_DIGEST{ $src->{parser} } : ''),
+                 flatten_value($src));
+    for my $p (sort @$paths) {
+        my @st = stat $p;
+        push @parts, join(':', relname($p), (@st ? ($st[7], $st[9]) : ('', '')));
+    }
+    return digest_parts(@parts);
+}
+
+# ハッシュはバイト列しか受け取らないので UTF-8 に符号化してから渡す。
+sub digest_parts {
+    return sha1_hex(Encode::encode('UTF-8', join("\0", @_), Encode::FB_DEFAULT));
+}
+
+sub read_fingerprint {
+    my ($path) = @_;
+    open my $fh, '<', $path or return '';
+    my $fp = <$fh>;
+    close $fh;
+    $fp = '' unless defined $fp;
+    $fp =~ s/\s+//g;
+    return $fp;
+}
+
+sub write_fingerprint {
+    my ($path, $fp) = @_;
+    open my $fh, '>', $path or return;
+    print $fh "$fp\n";
+    close $fh;
+}
+
+#-----------------------------------------------------------------------------
 # 実行 (ファイル末尾に置く。上のサブルーチン群が使う表の代入を先に済ませるため)
 #-----------------------------------------------------------------------------
 printf "対象ディレクトリ: %s\n", $basedir;
@@ -3657,7 +3780,7 @@ unless ($dry_run) {
     for my $dir (@dirs) {
         merge_directory($dir, [ grep { $_->{dir} eq $dir } @SOURCES ], $colv, $ncbiv, $accepted);
     }
-    cleanup_intermediates(\@selected) unless $keep;
+    cleanup_intermediates(\@selected) if $clean;
 }
 
 report_summary();
