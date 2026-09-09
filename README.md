@@ -106,13 +106,11 @@ yomi    japname
 
 - http://listmj.mothprog.com/
 
-#### 日本産蝶類和名学名便覧 (猪又 敏男・植村 好延・矢後 勝也・上田 恭一郎・神保 宇嗣)
+#### 日本産蝶類の学名リスト (長田 庸平)
 
 以下のURLとリンク先のHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
-- https://web.archive.org/web/20211017231224/https://binran.lepimages.jp/
-
-リンク切れの際は古いファイルに遡って取得します。
+- https://japanesebutterfly.wixsite.com/butterfly-list
 
 #### 日本産トビケラの種リスト (野崎 隆夫)
 
@@ -246,7 +244,7 @@ yomi    japname
 japname    sciname    japvalid    rank    subrank    sourcetitle    sourceauthor    sourceurl
 ```
 
-実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、scinameが同一でjapnameが異なる行が生じる。scinameにはシノニムは使用しない。japvalidは和名が有効名かどうかを示す(0はinvalidで1はvalid)。和名がシノニムなら0になる。rank・subrankについては後述。sourceurlは上記URLが出力される。sourcetitleはソースのタイトル。sourceauthorは作者名。ただし、Catalogue of Lifeの場合は該当するエントリごとにsourceIDがあるため、それに基づいてsourcetitle、sourceauthor、sourceurlを出力する。sourceauthorが3名以上の場合、日本語なら「～ら」、英語なら「～ et al.」として2人目以降を省略する。
+実際にはスペースではなくタブを区切りとして使用する。和名シノニムがある場合、scinameが同一でjapnameが異なる行が生じる。scinameにはシノニムは使用しない。ソースの学名がCatalogue of Lifeでシノニムとされている場合、Catalogue of Lifeの有効名に修正して採用します。japvalidは和名が有効名かどうかを示す(0はinvalidで1はvalid)。和名がシノニムなら0になる。rank・subrankについては後述。sourceurlは上記URLが出力される。sourcetitleはソースのタイトル。sourceauthorは作者名。ただし、Catalogue of Lifeの場合は該当するエントリごとにsourceIDがあるため、それに基づいてsourcetitle、sourceauthor、sourceurlを出力する。sourceauthorが3名以上の場合、日本語なら「～ら」、英語なら「～ et al.」として2人目以降を省略する。
 
 ### 学名→和名テーブル (sciname2japname_VERSION_BUILDDATE.tsv)
 
