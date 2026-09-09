@@ -1550,6 +1550,10 @@ sub is_placeholder {
     return 1 if $jap !~ /[\x{3040}-\x{30FF}\x{4E00}-\x{9FFF}\x{FF66}-\x{FF9D}]/;
     return 1 if $jap =~ /\A[A-Za-z][A-Za-z0-9 .()\x{2019}'-]*(?:属|亜属|節|科|亜科|族|亜族|目|亜目|上科|綱|亜綱|門|亜門|界|種|亜種)\z/;
     return 1 if $jap =~ /(?:界|門|亜門|綱|亜綱|目|亜目|上科|科|亜科|族|属|亜属)の(?:1|一)種\z/;
+    # 注記語そのもの。「エゾホウオウゴケ (チョウセイホウオウゴケ，新称)」のように
+    # 括弧の中で別名と注記がカンマ区切りで並ぶ行があり、分割すると注記だけが残る。
+    return 1 if $jap =~ /\A(?:和名)?(?:新称|改称|仮称|旧称|別称)\z/;
+    return 1 if $jap =~ /\A(?:裸名|非正式名|非合法名|要検討|新参異名)\z/;
     return 1 if defined $sci && length $sci && $jap eq $sci;
     return 0;
 }
@@ -2868,6 +2872,20 @@ sub japanese_run {
     return $last ? $runs[-1] : $runs[0];
 }
 
+# 行の末尾にまとまっている和名を、半角括弧付きの別名ごと取り出す。
+# japanese_run は半角括弧で連なりが切れるため、「エゾホウオウゴケ (チョウセイ
+# ホウオウゴケ，新称)」のような行では括弧の中身しか拾えず代表の和名を落とす。
+# この形の情報源では最初の日本語文字から行末までをまとめて和名として扱う。
+sub japanese_tail {
+    my ($line) = @_;
+    return '' unless defined $line;
+    $line = strip_japnotes($line);
+    return '' unless $line =~ /([\x{3040}-\x{30FF}\x{4E00}-\x{9FFF}\x{FF66}-\x{FF9D}].*)\z/s;
+    my $tail = $1;
+    $tail =~ s/[．。.]+\s*\z//;
+    return trim($tail);
+}
+
 # PDF から取り出した行を、レコードの開始行かどうかで束ねる。
 # $is_record->($line) が真なら新しいレコード、偽なら直前のレコードへ空白なしで連結。
 sub fold_pdf_lines {
@@ -2991,7 +3009,7 @@ sub parse_hattoria7 {
         for my $rec (@recs) {
             my ($head) = $rec =~ /\A([A-Z][A-Za-z\x{00C0}-\x{024F}-]+)/;
             $genus = $head if defined $head;
-            my $jap = norm_japname(japanese_run($rec, 1));
+            my $jap = japanese_tail($rec);
             $jap = '' if length $jap && $jap =~ /\A[（(]/;
 
             if ($rec =~ /(.*?)\s=\s(.*)/s) {
@@ -3064,7 +3082,7 @@ sub parse_hattoria9 {
         }
         for my $rec (@recs) {
             (my $r = $rec) =~ s/\s*\[\d+\]\s*\z//;
-            my $jap = norm_japname(japanese_run($r, 1));
+            my $jap = japanese_tail($r);
             my $sci = norm_sciname($r);
             next unless length $sci && length $jap;
             my $rname = jap_rank_suffix((split_japsyn($jap))[0]);
