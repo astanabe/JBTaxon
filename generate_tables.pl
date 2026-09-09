@@ -1392,6 +1392,8 @@ sub strip_japnotes {
     return $s;
 }
 
+# 和名の正規化。**空白は全て除去する** (全ソース共通の規則。「ヒメギフチョウ 北海道
+# 亜種」は「ヒメギフチョウ北海道亜種」になる)。末尾の句点や注記も落とす。
 sub norm_japname {
     my ($s) = @_;
     return '' unless defined $s;
@@ -1401,7 +1403,7 @@ sub norm_japname {
     $s =~ s/[．。\.]+\z//;
     $s =~ s/\A[\s・,、，\x{201C}\x{201D}"]+//;
     $s =~ s/[\s・,、，\x{201C}\x{201D}"]+\z//;
-    $s = squeeze($s);
+    $s =~ s/\s+//g;
     return $s;
 }
 
@@ -3523,7 +3525,7 @@ sub collect_scinames {
 
 sub external_validity {
     my ($name_bytes) = @_;
-    my (%col, %ncbi, %parent, %accepted);
+    my (%col, %ncbi, %parent, %srank, %accepted);
     return (\%col, \%ncbi, \%accepted) unless %$name_bytes;
 
     my $usage = File::Spec->catfile($basedir, 'AllTaxa', 'NameUsage.tsv');
@@ -3539,8 +3541,10 @@ sub external_validity {
             # 同じ学名が別の提供元で有効名としても載っていれば有効名を採る
             $col{ $f[7] } = $valid if !exists $col{ $f[7] } || $valid;
             # シノニムの有効名は col:parentID の先にある
-            $parent{ $f[7] } = $f[4]
-                if !$valid && defined $f[4] && length $f[4] && !exists $parent{ $f[7] };
+            if (!$valid && defined $f[4] && length $f[4] && !exists $parent{ $f[7] }) {
+                $parent{ $f[7] } = $f[4];
+                $srank{ $f[7] }  = defined $f[9] ? $f[9] : '';
+            }
         }
         close $fh;
 
@@ -3558,6 +3562,12 @@ sub external_validity {
                 next if $col{$n};
                 my $a = $pname{ $parent{$n} };
                 next unless $a && length $a->[0] && $a->[0] ne $n;
+                # CoL は亜種を種のシノニムとして畳んでいることが多い。こういう
+                # 「下位の階層を上位の階層のシノニムにしている」判定は採用せず、
+                # ソース側の階層のまま残す。
+                my $nr = exists $COL_RANK{ $srank{$n} } ? rk($COL_RANK{ $srank{$n} }) : undef;
+                my $ar = exists $COL_RANK{ $a->[1] }    ? rk($COL_RANK{ $a->[1] })    : undef;
+                if (defined $nr && defined $ar && $ar < $nr) { delete $col{$n}; next }
                 $accepted{$n} = $a;
             }
         }
