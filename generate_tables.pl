@@ -39,7 +39,9 @@ binmode STDERR, ':encoding(UTF-8)';
 # 依存チェック
 #
 # fetch_data.pl はコアモジュールだけで書かれているが、本スクリプトは xlsx・HTML・
-# CSV・PDF を解釈する必要があるため非コアの3モジュールと pdftotext に依存する。
+# CSV・PDF を解釈する必要があるため非コアの4モジュールと pdftotext に依存する。
+# Encode::JIS2K は和名が日本語の文字だけでできているかを JIS X 0213 で見るために使う
+# (コアの Encode は JIS X 0208 までしか扱えない)。
 # xlsx は自前のストリーミングリーダで読むので Spreadsheet::* は使わない。
 # zip も IO::Uncompress::Unzip (コア) で展開する。
 #-----------------------------------------------------------------------------
@@ -47,6 +49,7 @@ my @REQUIRED_MODULES = (
     [ 'HTML::TreeBuilder',  'libhtml-tree-perl',         'HTML の入れ子構造の解析' ],
     [ 'HTML::TableExtract', 'libhtml-tableextract-perl', 'HTML テーブルの列抽出' ],
     [ 'Text::CSV',          'libtext-csv-perl',          'CSV の解析' ],
+    [ 'Encode::JIS2K',      'libencode-jis2k-perl',      'JIS X 0213 による和名の文字の検査' ],
 );
 my @REQUIRED_COMMANDS = (
     [ 'pdftotext', 'poppler-utils poppler-data', 'PDF からのテキスト抽出' ],
@@ -74,23 +77,41 @@ my %CHAR_FIXUP = (
     "\x{FF0D}" => '-',
 );
 
+# 半角カナ (U+FF61-U+FF9F) に対応する全角の文字を符号位置の順に並べたもの。
+# 和名にも学名にも半角カナは入れない (全角カナに寄せる)。
+my $FULLWIDTH_KANA =
+    '。「」、・ヲァィゥェォャュョッーアイウエオカキクケコサシスセソタチツテト'
+  . 'ナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン゛゜';
+
+# 濁点を合成した字が符号位置の1つ隣にないもの。カ行〜ト・ハ行は1つ隣にある。
+my %KANA_VOICED = ('ウ' => 'ヴ', 'ワ' => 'ヷ', 'ヰ' => 'ヸ', 'ヱ' => 'ヹ', 'ヲ' => 'ヺ',
+                   'う' => 'ゔ');
+
+# ローマ数字 (U+2160-U+217F) はラテン文字に置き換える。「Ⅱ」は「II」、「ⅳ」は「iv」。
+my @ROMAN_UPPER = qw(I II III IV V VI VII VIII IX X XI XII L C D M);
+my @ROMAN_LOWER = qw(i ii iii iv v vi vii viii ix x xi xii l c d m);
+
 # 和名から取り除く注記。
 my @JAPNAME_NOTES = (
     '（和名新称）', '（和名改称）', '（新称）', '（仮称）', '（旧称）', '（p.p.）',
     '(和名新称)', '(和名改称)', '(新称)', '(仮称)', '(旧称)', '(p.p.)',
     '『和名新称』', '『和名改称』',
     '[NR]', '[要検討]', '[非合法名]', '[非正式名]', '[裸名]',
-    '【広義】', '【狭義】',
+    '【広義】', '【狭義】', '（広義）', '（狭義）', '(広義)', '(狭義)',
 );
 
 # 情報源の誤記のうち、正しい表記が判明しているもの。
 my %JAPNAME_FIX = (
     'アオゾメキロキツネガサ' => 'アオゾメキイロキツネガサ',
+    '野生のオリーブの木'     => '野生型オリーブの木',
+    '野生エマー小麦'         => '野生型エンマーコムギ',
+    '長江の淡水性スナメリ'   => '長江スナメリ',
 );
 
 # 語彙でしか和名でないと判定できないもの。FernGreenList の「コウシュンシダ
 # （中池）」は和名を当てた人の名前で、構造からは分類群名と区別できない。
 my %JAPNAME_DROP = map { $_ => 1 } ('中池');
+
 
 # Catalogue of Life (ColDP) の分類階級と、有効名として扱わない status。
 # 「provisionally accepted」は暫定的な有効名なので有効名として扱う。
@@ -1407,12 +1428,57 @@ sub fixup_chars {
     $s =~ s/([\x{FB00}-\x{FB06}\x{00A0}\x{2010}-\x{2014}\x{2212}\x{00D7}\x{FF0D}])/$CHAR_FIXUP{$1}/g;
     # 康熙部首 (U+2F00-U+2FD5) を対応する CJK 統合漢字へ寄せる
     $s =~ s/([\x{2F00}-\x{2FD5}])/kangxi_to_cjk($1)/ge;
+    # 長音符 (ー) を横線 (U+2015) で書いた表記を直す。「モロニ―マウス白血病
+    # ウイルス」「レッサークーズ―」の4件。仮名の後ろの U+2015 に限る。
+    $s =~ s/(?<=[\x{3040}-\x{30FF}])\x{2015}/\x{30FC}/g;
+    # 半角カナは全角カナにする。濁点・半濁点は直前の字と合成する。
+    $s =~ s/([\x{FF61}-\x{FF9F}]+)/fullwidth_kana($1)/ge;
+    # 結合用の濁点・半濁点 (U+3099/U+309A) も直前の字と合成する。ICTV の xlsx に
+    # 「アスパラカ゛スウイルス」のように分解された表記がある。見た目は同じでも
+    # 別の文字列になるので、直さないと合成済みの表記と別名として散らばる。
+    $s =~ s/(.)([\x{3099}\x{309A}])/my $c = compose_kana($1, $2 eq "\x{3099}" ? 1 : 0);
+                                      defined $c ? $c : "$1$2"/ge;
+    # 全角の数字・ラテン文字は半角にする。
+    $s =~ s/([\x{FF10}-\x{FF19}\x{FF21}-\x{FF3A}\x{FF41}-\x{FF5A}])/chr(ord($1) - 0xFEE0)/ge;
+    # ローマ数字はラテン文字にする。学名では数字と同じく前後を空白で区切る規則
+    # なので、ここで空白を添えておく (和名側は norm_japname が空白を全て除く)。
+    $s =~ s/([\x{2160}-\x{216F}])/' ' . $ROMAN_UPPER[ord($1) - 0x2160] . ' '/ge;
+    $s =~ s/([\x{2170}-\x{217F}])/' ' . $ROMAN_LOWER[ord($1) - 0x2170] . ' '/ge;
     return $s;
 }
 
 # 康熙部首ブロックは CJK 統合漢字と1対1に対応する。表は持たず、Unicode の
 # 対応表のうち本リポジトリの情報源に現れうる範囲だけを直接引く。
 sub kangxi_to_cjk { my ($c) = @_; return exists $KANGXI{$c} ? $KANGXI{$c} : $c }
+
+# 半角カナの連なりを全角カナにする。濁点・半濁点 (U+FF9E/U+FF9F) は独立した
+# 文字として後ろに続くので、直前の字と合成する (「ｴｿﾞ」→「エゾ」)。
+sub fullwidth_kana {
+    my ($s) = @_;
+    my @c = split //, $s;
+    my $out = '';
+    for (my $i = 0; $i <= $#c; $i++) {
+        my $z = substr($FULLWIDTH_KANA, ord($c[$i]) - 0xFF61, 1);
+        if ($i < $#c && ($c[$i + 1] eq "\x{FF9E}" || $c[$i + 1] eq "\x{FF9F}")) {
+            my $v = compose_kana($z, $c[$i + 1] eq "\x{FF9E}" ? 1 : 0);
+            if (defined $v) { $out .= $v; $i++; next }
+        }
+        $out .= $z;
+    }
+    return $out;
+}
+
+# カナに濁点 ($voiced が真) か半濁点を足した字を返す。合成できなければ undef。
+# ひらがなも同じ並びなので同じ計算でよい。
+sub compose_kana {
+    my ($z, $voiced) = @_;
+    unless ($voiced) {
+        return $z =~ /\A[ハヒフヘホはひふへほ]\z/ ? chr(ord($z) + 2) : undef;
+    }
+    return $KANA_VOICED{$z} if exists $KANA_VOICED{$z};
+    return $z =~ /\A[カキクケコサシスセソタチツテトハヒフヘホかきくけこさしすせそたちつてとはひふへほ]\z/
+         ? chr(ord($z) + 1) : undef;
+}
 
 sub trim {
     my ($s) = @_;
@@ -1441,17 +1507,24 @@ sub strip_japnotes {
     }
     # 括弧に入れた編集上の注記。名前ではないので括弧ごと落とす。
     # 「ナンキンシマアツバ（誤記）」「ヒヨドリバナ (二倍体)」「HOK?（註１）」など。
-    $s =~ s/[（(]\s*(?:註\s*[0-9０-９]*|誤字|誤記|誤用|統合|和名交換|下位同物異名
-             |二倍体|倍数体|新称|改称|仮称|旧称|別称)(?:予定)?\s*[？?]?\s*[）)]//gx;
+    my $note = qr/\s*(?:註\s*[0-9０-９]*|誤字|誤記|誤用|統合|和名交換|下位同物異名
+                   |二倍体|倍数体|新称|改称|仮称|旧称|別称|同名注意)(?:予定)?\s*[？?]?\s*/x;
+    $s =~ s/[（(]$note[）)]//g;
+    $s =~ s/\[$note\]//g;
     # 括弧に入れた文献の引用。数字・ラテン文字・コロンを含むものがそれで、
     # 末尾とは限らない。「トカラシュスラン (Hatus., 改訂鹿児島県植物目録: 230,
     # 1986)， クニガミシュスラン」のように別名の並びの途中に挟まる。
     $s =~ s/[（(][^）)]*[0-9０-９A-Za-z：:][^）)]*[）)]//g;
+    # 角括弧の中には丸括弧が入る (「[本上科の高次分類体系は Pulawski (2016)に
+    # 従った．]」)。丸括弧と同じ文字クラスで扱うと途中で切れるので別に落とす。
+    $s =~ s/\[[^\[\]]*[0-9０-９A-Za-z：:][^\[\]]*\]//g;
     return $s;
 }
 
 # 和名の正規化。**空白は全て除去する** (全ソース共通の規則。「ヒメギフチョウ 北海道
 # 亜種」は「ヒメギフチョウ北海道亜種」になる)。末尾の句点や注記も落とす。
+# 全角の数字・ラテン文字と半角カナ、ローマ数字は fixup_chars が置き換えるので、
+# 和名には半角数字・半角ラテン文字・全角カナだけが残る。
 sub norm_japname {
     my ($s) = @_;
     return '' unless defined $s;
@@ -1459,12 +1532,25 @@ sub norm_japname {
     $s =~ s/\x{3000}//g;
     # 「別名：」「別称：」の前置きは名前の一部ではない
     $s =~ s/\A\s*(?:別名|別称|旧名|和名)\s*[：:]\s*//;
+    # 「Allotrichia 属 カワリオオヒメトビケラ属」のように、学名に添えた階層名が
+    # 和名の先頭に紛れ込むことがある。空白で区切られた先頭の階層名は落とす。
+    $s =~ s/\A\s*(?:[上下亜小]?[界門綱目科族属種節]|変種|品種)\s+(?=\S)//;
     # 「：コケ植物と同名異種」「．和名保留」「”はPsoraへの後続同名」のような
     # 末尾の説明を落とす。分類群和名にこれらの記号は使われない。
     $s =~ s/[：:].*\z//s;
     $s =~ s/[\x{201C}\x{201D}].*\z//s;
     $s =~ s/[．\.](?=\S*[\x{3040}-\x{30FF}\x{4E00}-\x{9FFF}]).*\z//s;
     $s =~ s/[？?]//g;
+    # 引用符は名前の一部ではない。栽培品種や仮称を括る「'アズミイノデ'」の
+    # ような書き方があるので、両端だけでなく全て除く (学名側は「Cobitis sp.
+    # 'yamato'」の引用符を残すので norm_sciname では行わない)。
+    $s =~ s/['"\x{2018}\x{2019}]//g;
+    # 全体を角括弧で括った書き方は括弧だけ外す (「[アシブトヒメハマキ]」)。
+    # それ以外の角括弧は注記なので中身ごと落とし (「カラクサイノデ[中池]」)、
+    # 対の取れていない括弧は落とす (「エゾギク]]」)。
+    $s =~ s/\A\s*\[([^\[\]]*)\]\s*\z/$1/;
+    $s =~ s/\[[^\[\]]*\]//g;
+    $s =~ s/[\[\]]//g;
     $s = squeeze($s);
     $s =~ s/[．。\.]+\z//;
     $s =~ s/\A[\s・,、，\x{201C}\x{201D}"]+//;
@@ -1474,7 +1560,10 @@ sub norm_japname {
 }
 
 # 学名の正規化。著者名・年・ライフステージ注記を落とし、
-# var. / subsp. / f. の前後を半角空白1つに整える。
+# var. / subsp. / f. の前後を半角空白1つに整える。全角の数字・ラテン文字と
+# 半角カナ、ローマ数字は fixup_chars が置き換える。半角数字は前後を空白で区切る。
+# 接続語の綴りも揃える。ドットの欠落 (「var longifolia」) を補い、「forma」は
+# 「f.」に、「ssp.」は「subsp.」にし、接続語のない三名法には subsp. を補う。
 sub norm_sciname {
     my ($s) = @_;
     return '' unless defined $s;
@@ -1483,8 +1572,19 @@ sub norm_sciname {
     $s =~ s/\((?:adult|copepodid|larva|nymph|juvenile)\)//gi;
     # var.bidens のように空白が抜けている表記を直す
     $s =~ s/\b(subsp|ssp|var|subvar|f|sect|nothosubsp|nothovar)\.\s*/$1. /g;
+    # 「Lactuca sativa var longifolia」のようにドットが欠けている表記を直す。
+    # 接続語は必ず小文字始まりで、後ろに小文字の名前が続く形でしか現れない。
+    $s =~ s/\b(subsp|ssp|var|subvar|f|sect|nothosubsp|nothovar)\s+(?=[a-z])/$1. /g;
+    # 綴り出した「forma」も f. にする。ただし forma specialis は別の階級。
+    $s =~ s/\bforma\s+(?!specialis\b)(?=[a-z])/f. /g;
+    # 亜種の接続語は subsp. に統一する (ssp. と書く情報源がある)。
+    $s =~ s/\bssp\.\s+/subsp. /g;
     $s = squeeze($s);
     return '' unless length $s;
+    # 「NEUROPTERA」「VERTEBRATA」のように総大文字で書かれた高次分類群を直す。
+    # ラテン語の分類群名は母音か s で終わるので、CPR・DPANN・PVC のような
+    # 原核生物の群の略号は総大文字のまま残る。
+    $s = ucfirst(lc $s) if $s =~ /\A[A-Z]{2,}\z/ && $s =~ /[AEIOUYS]\z/;
 
     # 先頭から「名前らしいトークン」だけを採る。著者名 (大文字始まり) や括弧、
     # 数字が現れた時点で打ち切る。
@@ -1500,6 +1600,13 @@ sub norm_sciname {
         }
         # 名前の一部ではない語。ここから先は書誌情報なので打ち切る。
         last if $t =~ /\A(?:sensu|auct\.?|non|nec|complex|group|aggr?\.?|Type|type|of)\z/;
+        # 著者名に混じる前置詞・接続詞。小文字始まりなので種小名と紛らわしい
+        # (「Stigmidium subcladoniicola van den Boom」の van den、
+        #  「Shimamura et al.」の et、「Oenothera x gigantea hort ex Sweet」の hort)。
+        # 「and」と「or」は入れない。Wikidata の「Porcine reproductive and
+        # respiratory syndrome virus」や蛾の「Tethea or」を壊すため。
+        last if $t =~ /\A(?:van|von|der|den|de|del|della|di|da|dos|du|le|la|el
+                         |ex|et|in|hort|ter|op|zur|af|av|nom|comb|stat|emend)\z/x;
         if ($t =~ /\A(?:subsp|ssp|var|subvar|f|sect|nothosubsp|nothovar)\.\z/) {
             push @out, $t; $prev_connector = 1; next;
         }
@@ -1525,7 +1632,33 @@ sub norm_sciname {
     $name =~ s/\s+\z//;
     # 末尾に接続語だけが残った場合は落とす (「Genus var.」など)
     $name =~ s/\s+(?:subsp|ssp|var|subvar|f|sect|nothosubsp|nothovar|x)\.?\z//;
+    return space_sci_digits($name);
+}
+
+# 亜種の接続語の綴りを「subsp.」に揃える。
+# **接続語の有無は揃えてはならない。** 動物命名規約は接続語を書かず
+# (「Aberrasine aberrans okinawana」)、植物命名規約は書く
+# (「Acer pictum subsp. dissectum」) と規約ごとに決まっているため。
+# 参照データ (NameUsage.tsv / names.dmp) をバイト列のまま走査する側でも同じ処理が
+# 要る。ASCII の文字種と空白しか見ないのでバイト列にもそのまま使える
+# (strip_subgenus と同じ事情)。
+sub unify_ssp {
+    my ($name) = @_;
+    return $name unless defined $name && length $name;
+    $name =~ s/ ssp\. / subsp. /g;
     return $name;
+}
+
+# 学名の半角数字は前後を空白で区切る。末尾なら後ろの空白は要らない。
+# 「Alphatorquevirus homin1」は「Alphatorquevirus homin 1」になる。
+# ローマ数字から置き換えたラテン文字は fixup_chars が既に空白で区切っている。
+# 巨大な参照データをバイト列のまま走査する側にも同じ処理が要る
+# (space_digits_bytes。strip_subgenus と同じ事情)。
+sub space_sci_digits {
+    my ($s) = @_;
+    return '' unless defined $s;
+    $s =~ s/([0-9]+)/ $1 /g;
+    return squeeze($s);
 }
 
 # 和名から括弧内のシノニムと区切り文字で併記された別名を切り出す。
@@ -1535,18 +1668,24 @@ sub split_japsyn {
     return ('', ()) unless defined $s;
     $s = strip_japnotes(fixup_chars($s));
     $s =~ s/\x{3000}//g;
+    # 全体を角括弧で括った書き方がある (List-MJ の「[アシブトヒメハマキ]」)。
+    # 別名ではなく名前そのものなので括弧だけ外す。
+    $s =~ s/\A\s*\[([^\[\]]*)\]\s*\z/$1/;
     my @syn;
     # 括弧の中身は別名。閉じ括弧が欠けている情報源があるので末尾まで許す。
     # ただし数字・ラテン文字・コロンを含むものは文献の引用なので別名ではない。
     # 「トカラシュスラン (Hatus., 改訂鹿児島県植物目録: 230, 1986)」など。
-    while ($s =~ s/[（(]([^）)]*)[）)]?\s*\z//) {
-        my $inner = $1;
+    while (1) {
+        my $inner;
+        if    ($s =~ s/[（(]([^）)]*)[）)]?\s*\z//) { $inner = $1 }
+        elsif ($s =~ s/\[([^\[\]]*)\]\s*\z//)   { $inner = $1 }
+        else { last }
         next if $inner =~ /[0-9０-９A-Za-z：:]/;
         unshift @syn, $inner;
     }
     # 括弧の外は既定では「・」で切らない (「日本本土・大陸亜種」のような修飾語を
     # 壊すため)。「・」で別名を併記する情報源だけが $seps で明示的に指定する。
-    my @primary = split_japnames($s, defined $seps ? $seps : '，、,；;');
+    my @primary = split_japnames($s, defined $seps ? $seps : '，、,；;／/');
     my @rest;
     push @rest, split_japnames($_) for @syn;
     my $head = shift @primary;
@@ -1559,7 +1698,9 @@ sub split_japnames {
     return () unless defined $s;
     # 引用や注記は別名の並びの途中にも挟まるので、分ける前に落とす。
     $s = strip_japnotes($s);
-    $seps = '，、,・；;' unless defined $seps;
+    # 「鳴門／鳴戸」「アスペルギルス/コウジカビ属」のように「／」で2つの和名を
+    # 併記する情報源がある (WoRMS 系を中心に 336 件)。
+    $seps = '，、,・；;／/' unless defined $seps;
     my $re = '[' . quotemeta($seps) . ']';
     my @out;
     for my $p (split /$re/, $s) {
@@ -1592,6 +1733,11 @@ sub rank_from_sciname {
 
     # 接続語のない三名法は亜種として扱う (Elephantomyia dietziana dietziana)。
     my @tok = grep { !/\A\([A-Z]/ && !/\A(?:sp|spp|cf|aff|x)\.?\z/ } split /\s+/, $s;
+    # 末尾に付く数字は階層を変えない。space_sci_digits が「Alphatorquevirus
+    # homin1」を「Alphatorquevirus homin 1」にするので、そのまま数えると
+    # 三名法と区別できなくなる。「Alphapapillomavirus 1」は種小名の代わりに
+    # 数字が置かれた形なので、2語しかない場合は落とさない。
+    pop @tok while @tok > 2 && $tok[-1] =~ /\A[0-9]+\z/;
     return (rk('subspecies'), 1) if @tok >= 3;
     return (rk('species'), 1)    if @tok == 2;
 
@@ -1622,8 +1768,16 @@ sub is_placeholder {
     return 1 unless defined $jap && length $jap;
     return 1 if $jap =~ /\Aダミー/;
     return 1 if $jap =~ /\A(?:和名なし|なし|不明|未定|-|―|‐)\z/;
+    # 「和名がない」ことを表す記述。階層名を前に付けた書き方がある
+    # (「亜科和名なし」「族和名なし」「亜科和名未定」「科所属不明」「節の所属不明」)。
+    return 1 if $jap =~ /\A(?:[上下亜小]?[界門綱目科族属種節]の?)?(?:和名)?(?:なし|無し|未定|不明|保留)\z/;
+    return 1 if $jap =~ /\A(?:[上下亜小]?[界門綱目科族属種節]の?)?所属(?:が)?不明\z/;
+    return 1 if $jap =~ /\A未記載(?:種|亜種)?\z/;
     return 1 if $jap !~ /[\x{3040}-\x{30FF}\x{4E00}-\x{9FFF}\x{FF66}-\x{FF9D}]/;
-    return 1 if $jap =~ /\A[A-Za-z][A-Za-z0-9 .()\x{2019}'-]*(?:属|亜属|節|科|亜科|族|亜族|目|亜目|上科|綱|亜綱|門|亜門|界|種|亜種)\z/;
+    # 「Eucharitidae科」「Colfax属」「Anthaxia基亜属」「Anacardium(アナカルディウム)属」
+    return 1 if $jap =~ /\A[A-Za-z][A-Za-z0-9 .()\x{2019}'-]*(?:[（(][^）)]*[）)])?\s*
+                          (?:基|原名|基準)?
+                          (?:属|亜属|節|科|亜科|族|亜族|目|亜目|上科|綱|亜綱|門|亜門|界|種|亜種)\z/x;
     # 「〜属の一種」「〜の一種の幼虫」のような未同定の記載は和名ではない
     return 1 if $jap =~ /の(?:(?:1|一)種|不明種)\s*\d*(?:の幼虫|の成虫)?\z/;
     return 1 if $jap =~ /\A(?:和名保留|所属科不明|所属不明|科不明|属不明)\z/;
@@ -1635,8 +1789,49 @@ sub is_placeholder {
     # 括弧の中で別名と注記がカンマ区切りで並ぶ行があり、分割すると注記だけが残る。
     return 1 if $jap =~ /\A(?:和名)?(?:新称|改称|仮称|旧称|別称)\z/;
     return 1 if $jap =~ /\A(?:裸名|非正式名|非合法名|要検討|新参異名)\z/;
+    # 階層名そのものは名前ではない。base_japnames が「キツネザル型下目」から
+    # 型の指定を外すと「下目」だけが残るので、ここで弾く。
+    return 1 if $jap =~ /\A(?:亜|上|下|小|大|変|品)?(?:界|門|綱|目|科|族|属|種|節|群|類|型)群?\z/;
+    # 情報源の覚え書きが和名として切り出されたもの。学名の後ろに続く日本語が
+    # 拾われる (「Podabrus sp. 61として報告」の「として報告」、ハネカクシの註の
+    # 「S. testaceus (Fabricius, 1793)も記録されているが」)。分類群和名に文法的な
+    # 言い回しは現れないので、これらの語を含むものは名前ではない。
+    return 1 if $jap =~ /として|と同種|となる|され[るて]|している|と思われ|である
+                        |ではな|かもしれ|のため|および|または|に基づ|によ[るり]
+                        |記録|報告|除外|参照|扱[うわ]|分布しない|類似|現在は/x;
+    # 助詞の連なりは文であって名前ではない (「水国ではミヤマクビアカジョウカイ」
+    # 「以前の日本からの」)。分類群和名にこの並びは現れない。
+    return 1 if $jap =~ /では|には|からの|への|との|よりの/;
+    # 病名は生物の和名ではない (「豚熱」「鶏痘」「マツ材線虫病」「毛じらみ症」)。
+    # 「〜病菌」「〜病ウイルス」は病原体の和名なので末尾でだけ判定する。
+    return 1 if $jap =~ /(?:症|病|熱|炎|痘|疽)\z/;
+    # 日本語の文字集合 (JIS X 0213) にない文字を含むものは和名ではない。
+    # 簡体字の中国語 (「西伯利亚白刺」「小药八旦子」「类早熟禾」)、ハングルの混入
+    # (「オシダ한국어」)、ビルマ文字 (「ハマザクロ属ဘ」) がこれで落ちる。
+    return 1 unless japanese_chars($jap);
     return 1 if defined $sci && length $sci && $jap eq $sci;
     return 0;
+}
+
+# 名前が日本語の文字だけでできているか。判定は日本語の文字集合の現行規格である
+# JIS X 0213 で行う (Encode::JIS2K の euc-jisx0213)。コアの Encode が扱える
+# cp932 は JIS X 0208 までなので、`吐噶喇` の `噶`、トドの `魹`・`獱`、シメの
+# `鴲` のような第3・第4水準の漢字まで落としてしまう。
+# 文字単位で覚えておく (異なり字数は数千で、名前は30万件あるため)。
+# **Encode::encode に CHECK を渡すと元の文字列が破壊される**ので複製を渡すこと。
+my %CHAR_IS_JP;
+sub japanese_chars {
+    my ($s) = @_;
+    for my $c (split //, $s) {
+        next if ord($c) < 0x80;
+        unless (exists $CHAR_IS_JP{$c}) {
+            my $t = $c;
+            $CHAR_IS_JP{$c} =
+                eval { Encode::encode('euc-jisx0213', $t, Encode::FB_CROAK); 1 } ? 1 : 0;
+        }
+        return 0 unless $CHAR_IS_JP{$c};
+    }
+    return 1;
 }
 
 #-----------------------------------------------------------------------------
@@ -1653,7 +1848,7 @@ sub add_pair {
     # rawsci は学名欄に著者名が入らない情報源用。norm_sciname の
     # 「名前らしいトークンだけ採る」規則は ICTV の Alfamovirus AMV や
     # Duamitovirus crpa1 のような種小名を切り落としてしまう。
-    $sci = $opt{rawsci} ? squeeze(fixup_chars($sci)) : norm_sciname($sci);
+    $sci = $opt{rawsci} ? space_sci_digits(fixup_chars($sci)) : norm_sciname($sci);
     return unless length $sci;
     my ($head, @syn);
     if ($opt{nosplit}) { $head = norm_japname(defined $jap ? $jap : '') }
@@ -1662,21 +1857,84 @@ sub add_pair {
     unless (defined $rank) { ($rank, $subrank) = rank_from_sciname($sci) }
     my $jv = exists $opt{japvalid} ? ($opt{japvalid} ? 1 : 0) : 1;
     my $sv = exists $opt{scivalid} ? ($opt{scivalid} ? 1 : 0) : 1;
-    # 和名欄の末尾に学名がそのまま付いている行があるので落とす
+    # 和名欄の末尾に学名がそのまま付いている行があるので落とす。接続語を補う前の
+    # 形で照合すること (和名の後ろに付いているのは情報源が書いたままの学名)。
     $_ = strip_trailing_sciname($_, $sci) for ($head, @syn);
+    # subsp. や var. の付いた名前を種としている情報源があるが (海藻リストの
+    # 「Mazzaella cornucopiae subsp. yendoi」)、種ではありえないので rank は名前の
+    # 形に合わせる。接続語のない三名法は動物命名規約の亜種表記なので触らない。
+    ($rank, $subrank) = rank_from_sciname($sci)
+        if $rank == rk('species')
+        && $sci =~ /(?:\A| )(?:subsp|ssp|var|subvar|f|sect|nothosubsp|nothovar)\. /;
     my $nos2j = $opt{nos2j} ? 1 : 0;
     my @si = $opt{srcinfo} ? @{ $opt{srcinfo} } : ('', '', '');
     # 代表の和名が和名でないなら、その括弧内の別名も和名ではない。
     # 「キクスイモドキカミキリ属の不明種（東北個体群）」など。
     @syn = () if length $head && is_placeholder($head, $sci);
-    if (length $head && !is_placeholder($head, $sci)) {
-        push @$out, [ $head, $sci, $jv, $sv, $rank, $subrank, $nos2j, @si ];
-    }
+    my @names;
+    push @names, [ $head, $jv ] if length $head && !is_placeholder($head, $sci);
     # 括弧内の別名は和名シノニム扱い。学名側の有効性はそのまま引き継ぐ。
     for my $s (@syn) {
         next if is_placeholder($s, $sci);
-        push @$out, [ $s, $sci, 0, $sv, $rank, $subrank, $nos2j, @si ];
+        push @names, [ $s, 0 ];
     }
+    # 型や末尾の識別子を外した和名も和名シノニムとして足す (全ソース共通の規則)。
+    my %seen = map { $_->[0] => 1 } @names;
+    for my $n (map { $_->[0] } @names) {
+        for my $b (base_japnames($n)) {
+            next if $seen{$b}++ || is_placeholder($b, $sci);
+            push @names, [ $b, 0 ];
+        }
+    }
+    push @$out, [ $_->[0], $sci, $_->[1], $sv, $rank, $subrank, $nos2j, @si ] for @names;
+}
+
+# 型の指定や末尾の識別子を外した和名を作る。元の和名に加えて和名シノニム
+# (japvalid=0) として出すことで、型や番号を伴わない呼び方からも引けるようにする。
+#   「ヤマトシマドジョウA型」   -> 「ヤマトシマドジョウ」
+#   「太平洋系陸封型イトヨ」     -> 「イトヨ」
+#   「オウムアデノウイルスA3」   -> 「オウムアデノウイルス」
+# 外した結果がまた同じ形をしていることがあるので (「D型肝炎ウイルス1」は
+# 「肝炎ウイルス1」と「D型肝炎ウイルス」を経て「肝炎ウイルス」になる)、
+# 外せなくなるまで繰り返す。
+sub base_japnames {
+    my ($jap) = @_;
+    my @out;
+    return @out unless defined $jap && length $jap;
+    my %seen = ($jap => 1);
+    my @queue = ($jap);
+    while (@queue) {
+        my $n = shift @queue;
+        for my $b (strip_japtype($n), strip_japident($n)) {
+            # 1文字まで削れたものは名前ではない (「姫大鍬型虫」の「虫」)
+            next if length($b) < 2 || $seen{$b}++;
+            push @out, $b;
+            push @queue, $b;
+        }
+    }
+    return @out;
+}
+
+# 「～X型」と「X型～」から型の指定を外す。型の直前が英数字のときだけ「～X型」と
+# みなす (「トミヨ属雄物型」を壊さないため)。両方に当てはまる和名では両方出す。
+sub strip_japtype {
+    my ($jap) = @_;
+    my @out;
+    push @out, $1 if $jap =~ /\A(.*[^0-9A-Za-z])[0-9A-Za-z]+型\z/;
+    push @out, $1 if $jap =~ /\A.*型(.+)\z/;
+    return grep { length } @out;
+}
+
+# 末尾の識別子を外す。「型」が付かず番号や記号だけが末尾に付く和名がある
+# (「オウムアデノウイルスA3」)。ラテン文字・数字の連なりと、それに続く区切り記号
+# をまとめて落とす (「マメザトウムシ-Pea-eyedharvestmen」→「マメザトウムシ」)。
+# 「ヒメハゼ属の1種-3」の「の1種」のように、後ろに日本語が続く数字は残る。
+sub strip_japident {
+    my ($jap) = @_;
+    my $base = $jap;
+    my $ident = '0-9A-Za-z\x{00C0}-\x{024F}';
+    return () unless $base =~ s/[\s$ident'".,:;\/_-]*[$ident][\s$ident'".,:;\/_-]*\z//;
+    return length $base ? ($base) : ();
 }
 
 sub strip_trailing_sciname {
@@ -1807,8 +2065,8 @@ sub taxonomy_scores {
             next unless $line =~ $re;
             chomp $line;
             my @f = split /\t/, $line, 11;
-            my $name = Encode::decode('UTF-8', strip_subgenus(defined $f[7] ? $f[7] : ''),
-                                      Encode::FB_DEFAULT);
+            my $name = space_sci_digits(Encode::decode('UTF-8',
+                             strip_subgenus(defined $f[7] ? $f[7] : ''), Encode::FB_DEFAULT));
             next unless exists $want{$name};
             my $status = defined $f[6] ? $f[6] : '';
             next if ($seen_status{$name} || '') eq 'accepted';
@@ -1822,9 +2080,9 @@ sub taxonomy_scores {
         my %pname;
         col_scan($usage, \%needp, sub {
             my ($id, $f) = @_;
-            $pname{$id} = Encode::decode('UTF-8',
+            $pname{$id} = space_sci_digits(Encode::decode('UTF-8',
                               strip_subgenus(defined $f->[7] ? $f->[7] : ''),
-                              Encode::FB_DEFAULT);
+                              Encode::FB_DEFAULT));
         }) if %needp;
 
         for my $name (@$names) {
@@ -1846,7 +2104,8 @@ sub taxonomy_scores {
             next unless $line =~ $re;
             chomp $line;
             my @f = split /\s*\|\s*/, $line;
-            my $nm = Encode::decode('UTF-8', (defined $f[1] ? $f[1] : ''), Encode::FB_DEFAULT);
+            my $nm = space_sci_digits(Encode::decode('UTF-8',
+                             (defined $f[1] ? $f[1] : ''), Encode::FB_DEFAULT));
             next unless exists $want{$nm};
             my $class = defined $f[3] ? $f[3] : '';
             my $score = $class eq 'scientific name' ? 2 : 1;
@@ -1879,18 +2138,17 @@ sub choose_valid_sciname {
 # 「科\n亜科」が改行で入る。sheet2 (日本産から削除) は列がずれているので使わない。
 # 共有文字列にルビ (<rPh>) が 16,903 個あるが read_xlsx が除去する。
 #
-# この情報源に固有の扱いが3つある。
+# この情報源に固有の扱いが2つある。
 #   - 学名の欄に2つの学名が入ることがある。セル内で改行して並べる形と
 #     「属名 (属名) 種小名」の形の2通りで、後者の括弧付きの形は出力しない。
 #     どちらが有効名かは taxonomy_scores() で外部データベースに問い合わせる。
-#   - 「X型Z」「～X型」という和名からは、型の指定を外した和名も出す (japvalid=0)。
-#     「太平洋系陸封型イトヨ」→「イトヨ」、「ヤマトシマドジョウA型」→「ヤマトシマドジョウ」。
-#     型の直前が英数字1文字の場合だけ「～X型」とみなす (「トミヨ属雄物型」は分割しない)。
 #   - 「サツキマス・アマゴ」のように「・」で2つの和名を併記した行は、分割前の和名に
 #     加えて分割後の和名も有効名として出す。ただし分割後の和名は
 #     sciname2japname の2列目には使わない (nos2j)。
-# いずれもこの情報源に限った規則である。Wikidata の「ロベリア・ラキシフローラ」や
-# ウイルスの「A型肝炎ウイルス」に同じ規則を当てると壊れるため他へ広げないこと。
+# どちらもこの情報源に限った規則である。Wikidata の「ロベリア・ラキシフローラ」に
+# 「・」の規則を当てると壊れるため他へ広げないこと。
+# 型の指定を外した和名 (「太平洋系陸封型イトヨ」→「イトヨ」) はかつてこの情報源
+# だけの規則だったが、全ソース共通の規則になり add_pair が足すようになった。
 #-----------------------------------------------------------------------------
 sub parse_jaflist {
     my ($src, $paths) = @_;
@@ -1987,15 +2245,7 @@ sub jaflist_japnames {
     return () unless length $jap;
     my @out = ( [ $jap, 1, 0 ] );
 
-    # 「～X型」(型の直前が英数字1文字) と「X型Z」から型指定を外した和名
-    my $base;
-    if ($jap =~ /\A(.+?)\s*[0-9A-Za-z\x{FF10}-\x{FF19}\x{FF21}-\x{FF3A}\x{FF41}-\x{FF5A}]\s*型\z/) {
-        $base = trim($1);
-    }
-    elsif ($jap =~ /\A.*型(.+)\z/) {
-        $base = trim($1);
-    }
-    push @out, [ $base, 0, 0 ] if defined $base && length $base && $base ne $jap;
+    # 「～X型」「X型Z」から型指定を外した和名は add_pair が全ソース共通で足す。
 
     # 「サツキマス・アマゴ」のように2つの和名を併記したもの
     if ($jap =~ /・/) {
@@ -2052,7 +2302,10 @@ sub parse_listmj {
 sub strip_alias_prefix {
     my ($s) = @_;
     return '' unless defined $s;
-    $s =~ s/(?:\A|(?<=[，、,]))\s*(?:標準図鑑|旧名|別名|図鑑|新称)\s*[：:]\s*//g;
+    # 「日本の蛾：キシダモンキリガ」のように書名を前置きする書き方がある。
+    # norm_japname は「：」以降を説明として落とすので、ここで前置きを外さないと
+    # 書名の方が和名として残ってしまう。
+    $s =~ s/(?:\A|(?<=[，、,]))\s*(?:標準図鑑|旧名|別名|図鑑|新称|日本の蛾)\s*[：:]\s*//g;
     return $s;
 }
 
@@ -2157,7 +2410,12 @@ sub parse_shigainsect {
             my $ci = $idx->('異名・旧名');
             return unless defined $ci && length $f[$ci];
             my $canon = norm_sciname($sci);
-            for my $seg (split_mixed_names(strip_japnotes($f[$ci]))) {
+            # 「Malthinus kobensis（水国）」のように括弧に入れた日本語は出典の
+            # 略称などの覚え書きであって別名ではない。括弧の中がラテン文字の
+            # ものは亜属名なので残す (「Onychiurus (Hymenaphorura) sibirica」)。
+            (my $alias = $f[$ci])
+                =~ s/[（(][^）)]*[\x{3040}-\x{30FF}\x{4E00}-\x{9FFF}][^）)]*[）)]//g;
+            for my $seg (split_mixed_names(strip_japnotes($alias))) {
                 my ($type, $tok) = @$seg;
                 if ($type eq 'jap') {
                     next unless length $tok >= 2;
@@ -3096,6 +3354,10 @@ sub parse_hattoria7 {
     my @out;
     for my $path (@$paths) {
         my $text = read_pdf_text($path, 4, 203);
+        # 「…, fide\n      Shimamura et al. (2008). アリノヨツバ.」のように、
+        # 出典を添える fide の後ろで行が折り返す。継続行が著者名で始まるため
+        # レコードの開始と見分けが付かないので、ここで畳んでおく。
+        $text =~ s/,?[ \t]*fide[ \t]*\n[ \t]*/, fide /g;
         my @recs = fold_pdf_lines($text,
             sub { my ($l) = @_; return $_[0] =~ /\A[A-Z\x{00C0}-\x{024F}][A-Za-z\x{00C0}-\x{024F}-]+\s/ ? 1 : 0 },
             sub { my ($l) = @_; return $l =~ /\A[\d\s]+\z/ ? 1 : 0 });
@@ -3228,6 +3490,10 @@ sub parse_aculeata {
             my $line = despace_latin($rec);
             # 誤同定の記録だけを落とす。全角コロンは分布欄にも現れるので条件にしない。
             next if $line =~ /\bnec\b|\[Misidentification/;
+            # 角括弧に入るのは編集上の覚え書きで、和名ではない。落としておかないと
+            # 中の日本語が和名として拾われる (「[以前の日本からの C. inermis
+            # ヒメトガリハナバチの記録は，…]」「[… のホモニムとなる(Art.58.1)]」)。
+            $line =~ s/\[[^\[\]]*\]//g;
             if ($line =~ /\A($keywords)(?:-group)?\s+([A-Z][A-Za-z-]+)/) {
                 my ($word, $name) = ($1, $2);
                 my $jap = despace_japanese(japanese_run($line, 0));
@@ -3326,12 +3592,17 @@ sub parse_col {
     });
     delete $need{$_} for keys %rec;
 
+    # 差し替え先は学名と一緒に col:rank も控える。シノニムの rank をそのまま
+    # 使うと「Anthus japonicus (種) のシノニム解決先 Anthus rubescens japonicus
+    # (亜種)」に種の rank が付いてしまう。
     my %accepted;
     if (%need) {
         col_scan($usage, \%need, sub {
             my ($id, $f) = @_;
-            $accepted{$id} =
-                Encode::decode('UTF-8', (defined $f->[7] ? $f->[7] : ''), Encode::FB_DEFAULT);
+            $accepted{$id} = [
+                Encode::decode('UTF-8', (defined $f->[7] ? $f->[7] : ''), Encode::FB_DEFAULT),
+                (defined $f->[9] ? $f->[9] : ''),
+            ];
         });
     }
 
@@ -3353,17 +3624,23 @@ sub parse_col {
                              ? (rk($COL_RANK{$crank}), 1)
                              : rank_from_sciname(norm_sciname($sci));
         my $valid = $COL_INVALID_STATUS{$status} ? 0 : 1;
-        my $acc = (!$valid && length $parent)
-                ? (exists $accepted{$parent} ? $accepted{$parent}
-                                             : ($rec{$parent} ? $rec{$parent}[0] : ''))
-                : '';
+        my ($acc, $acrank) = ('', '');
+        if (!$valid && length $parent) {
+            if    (exists $accepted{$parent}) { ($acc, $acrank) = @{ $accepted{$parent} } }
+            elsif ($rec{$parent})             { ($acc, $acrank) = @{ $rec{$parent} }[0, 1] }
+        }
+        # 差し替え先の rank は差し替え先のものを使う (README の規定)
+        my ($arank, $asubrank) = length $acc
+            ? (exists $COL_RANK{$acrank} ? (rk($COL_RANK{$acrank}), 1)
+                                         : rank_from_sciname(norm_sciname($acc)))
+            : ($rank, $subrank);
         for my $j (@{ $jap{$id} }) {
             my ($name, $vsrc) = @$j;
             my $sid  = length $vsrc ? $vsrc : $usrc;
             my $info = (length $sid && $meta->{$sid}) ? $meta->{$sid} : undef;
             add_pair(\@out, $name, $sci, $rank, $subrank,
                      scivalid => $valid, srcinfo => $info);
-            add_pair(\@out, $name, $acc, $rank, $subrank, srcinfo => $info)
+            add_pair(\@out, $name, $acc, $arank, $asubrank, srcinfo => $info)
                 if !$valid && length $acc && $acc ne $sci;
         }
     }
@@ -3487,8 +3764,27 @@ sub col_yaml_quoted {
 #
 # 列は qid / sci / ja / ranks / ranks_ja / parents / aliases / commons。
 # ranks_ja が日本語の階級名 (種・属・科…) なので rank はそこから決める。
-# aliases (skos:altLabel) と commons (P1843) は和名シノニムとして出す。
 # 有効名／シノニムの情報は持たないので学名は常に有効名として扱う。
+#
+# **aliases (skos:altLabel) は使わない。** 「別称」の欄で、実際に入っているのは
+# 「金魚の木」「金目鯛」「ブラックペッパー」「虎耳草」「サヴァティアーノ種」
+# (ワインの品種名)「小麦黄銹病」(病名) のような俗名が大半。採ると和名が 10,535 件
+# 増えるが、そのほとんどが分類群名ではない。
+#
+# **commons (P1843「taxon common name」) は属以上のときだけ和名シノニムに採る。**
+# 種の P1843 は「カゴソウ」(夏枯草)「ショウブコン」(菖蒲根)「ジャパニーズミント」
+# 「ブルーマロウ」のような生薬名・商品名になりがちだが、属以上の P1843 は
+# 「奇蹄目＝ウマ目」のような正式な別和名になっている。属以上に限ると 130 件増え、
+# その中身は「有櫛動物門」「平板動物門」「頭索動物亜門」「条鰭綱」「八放珊瑚亜綱」
+# 「管水母目」「コバチ上科」のような**他のどのソースも持っていない**高次分類群の
+# 和名で、「エクソシゾン目／エレウテロスキゾン目」のような音写ゆれも揃う。
+#
+# 代表の和名に使うのは ja ラベル (Wikipedia の記事名。通常は標準和名) だけ。
+#
+# ラベルだけでも Wikidata は**上位分類群の和名の主要な供給元**で、他ソースを外すと
+# 門の和名は 316 件から 50 件、綱は 608 件から 118 件、上科は 215 件から 15 件に
+# 落ちる。Catalogue of Life の和名は種中心、分類群別ソースは担当群の上位階層しか
+# 持たないため。種のレベルでの寄与は 9% しかない。
 #-----------------------------------------------------------------------------
 my %WIKIDATA_RANK = (
     '界' => 'kingdom', '亜界' => 'subkingdom',
@@ -3520,6 +3816,17 @@ sub parse_wikidata {
             my $sci = norm_sciname($get->('sci'));
             my $jap = $get->('ja');
             next unless length $sci && length $jap;
+            # 栽培品種は分類群ではない。ja ラベルが品種名 (「アイスバーグ」
+            # 「あきたこまち」「万葉」)、P225 が「Rosa ‘Cocktail’」のような形で、
+            # norm_sciname が引用符付きの品種名を落とすため、そのまま採ると
+            # 品種名が属や種の和名になってしまう (Rosa と Cyclamen だけで 289 件)。
+            next if grep { $_ eq '栽培品種' || $_ eq '品種群' }
+                         split /\|/, $get->('ranks_ja');
+            # 階級が付いていない品種もあるので、引用符で括った品種小名を持つ学名も
+            # 落とす (「Rosa ‘Scheherazade’」は雑種種、「Capsicum chinense
+            # ‘Habanero’」は亜種と書かれている)。対になった引用符だけを見る。
+            # 「O'nyong-nyong virus」のように名前の一部のアポストロフィは残す。
+            next if $get->('sci') =~ /\x{2018}[^\x{2019}]*\x{2019}|'[^']*'|"[^"]*"/;
             my ($rank, $subrank);
             for my $r_ja (split /\|/, $get->('ranks_ja')) {
                 next unless exists $WIKIDATA_RANK{$r_ja};
@@ -3528,13 +3835,13 @@ sub parse_wikidata {
             }
             ($rank, $subrank) = rank_from_sciname($sci) unless defined $rank;
             add_pair(\@out, $jap, $sci, $rank, $subrank);
+            # 種以下の commons は俗名の欄なので採らない (上のコメント参照)
+            next if $rank >= rk('species');
             my $head = (split_japsyn($jap))[0];
-            for my $col ('aliases', 'commons') {
-                for my $a (split /\|/, $get->($col)) {
-                    next unless looks_japanese($a);
-                    next if (split_japsyn($a))[0] eq $head;
-                    add_pair(\@out, $a, $sci, $rank, $subrank, japvalid => 0);
-                }
+            for my $c (split /\|/, $get->('commons')) {
+                next unless looks_japanese($c);
+                next if (split_japsyn($c))[0] eq $head;
+                add_pair(\@out, $c, $sci, $rank, $subrank, japvalid => 0);
             }
         }
         close $fh;
@@ -3649,6 +3956,19 @@ sub strip_subgenus {
     return $name;
 }
 
+# 半角数字の前後を空白で区切る。space_sci_digits と同じことを、バイト列のまま
+# 走査する側でも行う (strip_subgenus と同じ事情)。こちらは decode しないので
+# \s を使わず、ASCII の空白だけを見る。
+sub space_digits_bytes {
+    my ($name) = @_;
+    return $name unless defined $name && $name =~ /[0-9]/;
+    $name =~ s/([0-9]+)/ $1 /g;
+    $name =~ s/[ \t]+/ /g;
+    $name =~ s/\A //;
+    $name =~ s/ \z//;
+    return $name;
+}
+
 sub collect_scinames {
     my ($sources) = @_;
     my %names;
@@ -3682,8 +4002,10 @@ sub external_validity {
         while (my $line = <$fh>) {
             chomp $line;
             my @f = split /\t/, $line, 11;
-            my $name = strip_subgenus($f[7]);
-            next unless defined $name && exists $name_bytes->{$name};
+            my $name = space_digits_bytes(strip_subgenus($f[7]));
+            next unless defined $name;
+            $name = unify_ssp($name);
+            next unless exists $name_bytes->{$name};
             my $valid = $COL_INVALID_STATUS{ defined $f[6] ? $f[6] : '' } ? 0 : 1;
             # 同じ学名が別の提供元で有効名としても載っていれば有効名を採る
             $col{$name} = $valid if !exists $col{$name} || $valid;
@@ -3702,7 +4024,8 @@ sub external_validity {
             my %pname;
             col_scan($usage, \%needp, sub {
                 my ($id, $f) = @_;
-                $pname{$id} = [ strip_subgenus(defined $f->[7] ? $f->[7] : ''),
+                $pname{$id} = [ unify_ssp(
+                                    space_digits_bytes(strip_subgenus(defined $f->[7] ? $f->[7] : ''))),
                                 (defined $f->[9] ? $f->[9] : '') ];
             });
             for my $n (keys %parent) {
@@ -3727,9 +4050,12 @@ sub external_validity {
         while (my $line = <$fh>) {
             chomp $line;
             my @f = split /\s*\|\s*/, $line, 5;
-            next unless defined $f[1] && exists $name_bytes->{ $f[1] };
+            my $nm = space_digits_bytes(defined $f[1] ? $f[1] : '');
+            next unless length $nm;
+            $nm = unify_ssp($nm);
+            next unless exists $name_bytes->{$nm};
             my $valid = (defined $f[3] && $f[3] eq 'scientific name') ? 1 : 0;
-            $ncbi{ $f[1] } = $valid if !exists $ncbi{ $f[1] } || $valid;
+            $ncbi{$nm} = $valid if !exists $ncbi{$nm} || $valid;
         }
         close $fh;
     }
