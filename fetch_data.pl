@@ -38,7 +38,6 @@ my $NILIM_BASE   = 'https://www.nilim.go.jp/lab/fbg/ksnkankyo/mizukokuweb/system
 my $NARO_BASE    = 'https://insect-web.rad.naro.go.jp/search/basic';
 my $NARO_QUERY   = 'mon=1&kou=1&moku=1&ka=1&kazoku=1&zoku=1&syu=1'
                  . '&amon=1&akou=1&amoku=1&aka=1&azoku=1&asyu=1&lang=ja';
-my $BINRAN_BASE  = 'https://web.archive.org/web/20211017231224/https://binran.lepimages.jp';
 my $SEAWEED_BASE = 'https://tonysharks.com/Seaweeds_list/';
 # Wikidata は WDQS (query.wikidata.org) だと 60 秒制限で完走しないので QLever を使う。
 # クエリは AllTaxa/wikidata.rq (リポジトリで追跡している) を POST する。
@@ -50,7 +49,6 @@ my $QLEVER_URL   = 'https://qlever.dev/api/wikidata';
 # type は以下の5種:
 #   file    ... 固定 URL の列挙
 #   naro    ... NARO 昆虫DB search/basic のページング
-#   binran  ... 日本産蝶類和名学名便覧 (Web Archive) の階層巡回
 #   seaweed ... 海藻リストのリンク抽出巡回
 #   sparql  ... SPARQL クエリファイルを POST して結果を保存する
 #   manual  ... 自動取得せず、未配置を案内するだけ
@@ -144,9 +142,19 @@ my @SOURCES = (
                      'trichoptera_names.html' ] ],
     },
     {   dir  => 'Insects',
-        type => 'binran',
-        desc => '日本産蝶類和名学名便覧 (Web Archive)',
-        count => '37',
+        type => 'file',
+        desc => '日本産蝶類の学名リスト',
+        # 科ごとに1ページ。ページ名が日本語なのでパーセントエンコードして持つ。
+        files => [ [ 'https://japanesebutterfly.wixsite.com/butterfly-list/%E3%82%BB%E3%82%BB%E3%83%AA%E3%83%81%E3%83%A7%E3%82%A6%E7%A7%91',
+                     'butterfly_Hesperiidae.html' ],
+                   [ 'https://japanesebutterfly.wixsite.com/butterfly-list/%E3%82%A2%E3%82%B2%E3%83%8F%E3%83%81%E3%83%A7%E3%82%A6%E7%A7%91',
+                     'butterfly_Papilionidae.html' ],
+                   [ 'https://japanesebutterfly.wixsite.com/butterfly-list/%E3%82%B7%E3%83%AD%E3%83%81%E3%83%A7%E3%82%A6%E7%A7%91',
+                     'butterfly_Pieridae.html' ],
+                   [ 'https://japanesebutterfly.wixsite.com/butterfly-list/%E3%82%B7%E3%82%B8%E3%83%9F%E3%83%81%E3%83%A7%E3%82%A6%E7%A7%91',
+                     'butterfly_Lycaenidae.html' ],
+                   [ 'https://japanesebutterfly.wixsite.com/butterfly-list/%E3%82%BF%E3%83%86%E3%83%8F%E3%83%81%E3%83%A7%E3%82%A6%E7%A7%91',
+                     'butterfly_Nymphalidae.html' ] ],
     },
     {   dir  => 'Spiders',
         type => 'naro',
@@ -312,7 +320,6 @@ for my $src (@selected) {
     printf "\n--- %s: %s ---\n", $src->{dir}, $src->{desc};
     if    ($src->{type} eq 'file')    { do_file($src) }
     elsif ($src->{type} eq 'naro')    { do_naro($src) }
-    elsif ($src->{type} eq 'binran')  { do_binran($src) }
     elsif ($src->{type} eq 'seaweed') { do_seaweed($src) }
     elsif ($src->{type} eq 'sparql')  { do_sparql($src) }
     else { die "未知の type です: $src->{type}\n" }
@@ -491,57 +498,6 @@ sub naro_total {
 }
 
 #-----------------------------------------------------------------------------
-# type: binran (日本産蝶類和名学名便覧の階層巡回)
-#
-#   /                              科
-#     /taxa/family/<F>/subfamily   亜科
-#       /taxa/subfamily/<S>/tribe  族 (ここが最下層。「詳細」はない)
-#     /taxa/family/<F>/genus       属
-#     /taxa/family/<F>/species     種
-#
-# 科レベルの genus / species が族配下の属・種も網羅しているため、亜科・族
-# レベルの genus / species は取得しない。/taxa/family/<F> のような中間パスは
-# Web Archive に取得されていないので使わない。
-#-----------------------------------------------------------------------------
-sub do_binran {
-    my ($src) = @_;
-    my $dir = File::Spec->catdir($basedir, $src->{dir});
-
-    my $index = File::Spec->catfile($dir, 'binran_index.html');
-    my $html  = fetch_text("$BINRAN_BASE/", $index);
-    unless (defined $html) {
-        logmsg('info', 'トップページが手元にないため巡回できません');
-        return;
-    }
-
-    my @families = uniq($html =~ m{/taxa/family/(\w+)/}g);
-    unless (@families) {
-        record_failure("$BINRAN_BASE/", relname($index), '科名を抽出できません');
-        return;
-    }
-    @families = sort @families;
-    logmsg('info', sprintf('科 %d件: %s', scalar @families, join(', ', @families)));
-
-    for my $f (@families) {
-        my $subpath = File::Spec->catfile($dir, "binran_family_${f}_subfamily.html");
-        my $subhtml = fetch_text("$BINRAN_BASE/taxa/family/$f/subfamily", $subpath);
-        fetch("$BINRAN_BASE/taxa/family/$f/genus",
-              File::Spec->catfile($dir, "binran_family_${f}_genus.html"));
-        fetch("$BINRAN_BASE/taxa/family/$f/species",
-              File::Spec->catfile($dir, "binran_family_${f}_species.html"));
-
-        next unless defined $subhtml;
-        my @subfamilies = sort(uniq($subhtml =~ m{/taxa/subfamily/(\w+)/}g));
-        next unless @subfamilies;
-        logmsg('info', sprintf('%s: 亜科 %d件', $f, scalar @subfamilies));
-        for my $s (@subfamilies) {
-            fetch("$BINRAN_BASE/taxa/subfamily/$s/tribe",
-                  File::Spec->catfile($dir, "binran_subfamily_${s}_tribe.html"));
-        }
-    }
-}
-
-#-----------------------------------------------------------------------------
 # type: seaweed (トップからのリンク抽出巡回)
 #
 # Seaweed_list_top.html は更新履歴のポータルで、実データは Brown/*.html,
@@ -680,9 +636,6 @@ sub list_sources {
         }
         elsif ($src->{type} eq 'naro') {
             printf "  %s_pageNNN.html <- %s\n", $src->{prefix}, naro_url($src->{category}, 'N');
-        }
-        elsif ($src->{type} eq 'binran') {
-            printf "  binran_*.html <- %s/\n", $BINRAN_BASE;
         }
         elsif ($src->{type} eq 'seaweed') {
             printf "  Brown|Red|Green|Numbers/*.html <- %s\n", $SEAWEED_BASE;

@@ -270,13 +270,13 @@ my @SOURCES = (
         sourceauthor => [ '神保 宇嗣' ],
         sourceurl    => 'http://listmj.mothprog.com/',
     },
-    {   dir => 'Insects', id => 'binran', parser => 'binran',
-        desc  => '日本産蝶類和名学名便覧',
-        files => [ 'binran_*.html' ],
-        scope => 18, year => 2021,
-        sourcetitle  => '日本産蝶類和名学名便覧',
-        sourceauthor => [ '猪又 敏男', '植村 好延', '矢後 勝也', '上田 恭一郎', '神保 宇嗣' ],
-        sourceurl    => 'https://web.archive.org/web/20211017231224/https://binran.lepimages.jp/',
+    {   dir => 'Insects', id => 'butterfly_list', parser => 'butterfly',
+        desc  => '日本産蝶類の学名リスト (科別5ページ)',
+        files => [ 'butterfly_*.html' ],
+        scope => 18, year => 2026,
+        sourcetitle  => '日本産蝶類の学名リスト',
+        sourceauthor => [ '長田 庸平' ],
+        sourceurl    => 'https://japanesebutterfly.wixsite.com/butterfly-list',
     },
     {   dir => 'Insects', id => 'trichoptera', parser => 'trichoptera',
         desc  => '日本産トビケラの種リスト',
@@ -571,7 +571,7 @@ sub do_parse {
     return parse_staphylinidae($src, $paths) if $p eq 'staphylinidae';
     return parse_aculeata($src, $paths)      if $p eq 'aculeata';
     return parse_trichoptera($src, $paths)   if $p eq 'trichoptera';
-    return parse_binran($src, $paths)        if $p eq 'binran';
+    return parse_butterfly($src, $paths)     if $p eq 'butterfly';
     return parse_shigainsect($src, $paths)   if $p eq 'shigainsect';
     return parse_tanaids($src, $paths)       if $p eq 'tanaids';
     return parse_earthworms($src, $paths)    if $p eq 'earthworms';
@@ -734,10 +734,10 @@ sub merge_directory {
         next unless $sv;
         next if valid_of(\%validity, "s\t$sci");
         my $a = $accepted->{$sci};
-        next unless defined $a && length $a && $a ne $sci;
+        next unless $a && length $a->[0] && $a->[0] ne $sci;
         $fixed{$sci} = $a;
-        $validity{"s\t$a"} = [ 1, 0, 0, 0 ] unless exists $validity{"s\t$a"};
-        $validity{"s\t$a"}[0] = 1;
+        $validity{"s\t$a->[0]"} = [ 1, 0, 0, 0 ] unless exists $validity{"s\t$a->[0]"};
+        $validity{"s\t$a->[0]"}[0] = 1;
     }
     logmsg('fix', sprintf('%s: シノニムとされた学名 %d 件を Catalogue of Life の有効名に差し替えました',
                           $dir, scalar keys %fixed))
@@ -757,9 +757,11 @@ sub merge_directory {
         adopt(\%adopt_j2s, $jap, $cand) if $sv && $svalid;
         adopt(\%adopt_s2j, $sci, $cand) if $jv && $jvalid && !$nos2j;
         next unless $sv && !$svalid && exists $fixed{$sci};
-        my $fix = { %$cand, sci => $fixed{$sci} };
+        my ($aname, $arank) = @{ $fixed{$sci} };
+        my $fix = { %$cand, sci => $aname };
+        $fix->{rank} = $arank if defined $arank;
         adopt(\%adopt_j2s, $jap, $fix);
-        adopt(\%adopt_s2j, $fixed{$sci}, $fix) if $jv && $jvalid && !$nos2j;
+        adopt(\%adopt_s2j, $aname, $fix) if $jv && $jvalid && !$nos2j;
     }
 
     my $j2s = write_final($dir, 'japname2sciname', \%adopt_j2s, \%validity, 'j');
@@ -2494,72 +2496,77 @@ sub expand_genus {
 }
 
 #-----------------------------------------------------------------------------
-# 日本産蝶類和名学名便覧 (HTML)
+# 日本産蝶類の学名リスト (HTML / 科別5ページ)
 #
-# ファイル名が階層を表している。科・亜科・族・属のページは
-# 「<th>科（学名）</th><th>科（和名）</th>」の表、種のページは <ol> と <ul> の
-# 入れ子で、<i> の個数が種 (2) と亜種 (3) を区別する。
-# 種レベルは和名シノニムの閉じ括弧が欠けている行がある。
+# Wix のサイトだが本文はサーバ側で描画されているので HTML から読める。
+# 1レコードが1つの <p class="font_N"> で、学名だけが font-style:italic の
+# span に入っている。行の形は次の通り。
+#
+#   Family Hesperiidae セセリチョウ科
+#   Subfamily Coeliadinae アオバセセリ亜科
+#   Tribe Zerynthiini タイスアゲハ族
+#   Genus <i>Luehdorfia</i> Cruger, 1878 ギフチョウ属
+#   <i>Luehdorfia japonica</i> Leech, 1889 ギフチョウ Japanese luehdorfia
+#   ssp. <i>yessoensis</i> Rothschild, 1918 北海道亜種
+#
+# 亜種の行は種小名しか書かれていないので直前の種の学名に連結し、和名も直前の種の
+# 和名に修飾語を付けて組み立てる (「ヒメギフチョウ 北海道亜種」)。
+# 種の行の「Papilio (Menelaides) polytes」のような亜属名は、他の情報源と
+# 照合できなくなるので二名法の学名からは外す。
+# 「Genue Troides」のように綴りを誤った見出しがあるので、キーワードで決まらない
+# ときは和名の接尾辞 (属・亜科など) でも rank を判定する。
 #-----------------------------------------------------------------------------
-my %BINRAN_RANK = (
-    '科' => 'family', '亜科' => 'subfamily', '族' => 'tribe',
-    '亜族' => 'subtribe', '属' => 'genus', '亜属' => 'subgenus',
+my %BUTTERFLY_RANK = (
+    'Family' => 'family', 'Subfamily' => 'subfamily',
+    'Tribe' => 'tribe', 'Subtribe' => 'subtribe',
+    'Genus' => 'genus', 'Genue' => 'genus', 'Subgenus' => 'subgenus',
 );
 
-sub parse_binran {
+sub parse_butterfly {
     my ($src, $paths) = @_;
     my @out;
     for my $path (@$paths) {
         my $html = read_html($path);
-        if (basename($path) =~ /_species\.html\z/) {
-            parse_binran_species($src, \@out, $html);
-        }
-        else {
-            parse_binran_table($src, \@out, $html);
+        my ($species_sci, $species_jap) = ('', '');
+        while ($html =~ m{<(p|h\d)\b[^>]*class="[^"]*font_\d+[^"]*"[^>]*>(.*?)</\1>}gs) {
+            my $body = $2;
+            my @ital = map { squeeze(fixup_chars(html_unescape(($_ =~ s{<[^>]*>}{}gsr)))) }
+                       ($body =~ m{<span[^>]*font-style:\s*italic;[^>]*>(.*?)</span>}gs);
+            my $text = squeeze(fixup_chars(html_unescape(($body =~ s{<[^>]*>}{}gsr))));
+            $text =~ s/\x{200B}//g;
+            next unless length $text;
+
+            if ($text =~ /\A(Family|Subfamily|Tribe|Subtribe|Genus|Genue|Subgenus)\s+(.*)\z/) {
+                my ($word, $rest) = ($1, $2);
+                my $sci = norm_sciname($rest);
+                next unless length $sci;
+                my $jap = japanese_run($rest, 1);
+                add_pair(\@out, $jap, $sci, rk($BUTTERFLY_RANK{$word}), 1);
+                next;
+            }
+            if ($text =~ /\Assp\.\s+(.*)\z/) {
+                my $rest = $1;
+                next unless length $species_sci;
+                my ($epithet) = @ital ? ($ital[-1]) : ($rest =~ /\A(\S+)/);
+                $epithet = trim(defined $epithet ? $epithet : '');
+                next unless $epithet =~ /\A[a-z][a-z-]*\z/;
+                my $qual = japanese_run($rest, 1);
+                my $jap  = length $qual ? "$species_jap $qual" : $species_jap;
+                add_pair(\@out, $jap, "$species_sci $epithet", rk('subspecies'), 1, nosplit => 1);
+                next;
+            }
+            # 種の行。学名で始まり、続けて著者・和名・英名が並ぶ。
+            next unless @ital;
+            next unless $text =~ /\A\s*\Q$ital[0]\E/;
+            my $sci = norm_sciname($text);
+            $sci =~ s/\s*\([A-Z][A-Za-z-]*\)//;      # 亜属名は外す
+            next unless $sci =~ /\A[A-Z][A-Za-z-]+\s+[a-z][a-z-]+/;
+            my $jap = japanese_run($text, 0);
+            ($species_sci, $species_jap) = ($sci, (split_japsyn($jap))[0]);
+            add_pair(\@out, $jap, $sci, rk('species'), 1);
         }
     }
     return \@out;
-}
-
-sub parse_binran_table {
-    my ($src, $out, $html) = @_;
-    my ($thead) = $html =~ m{<tr>\s*<th>(.*?)</th>}s;
-    return unless defined $thead;
-    my ($word) = squeeze(html_text($thead)) =~ /\A(\S+?)[（(]/;
-    return unless defined $word && exists $BINRAN_RANK{$word};
-    my $rank = rk($BINRAN_RANK{$word});
-
-    while ($html =~ m{<tr>(.*?)</tr>}gs) {
-        my $row = $1;
-        next if $row =~ /<th>/;
-        my @cells;
-        push @cells, squeeze(html_text($1)) while $row =~ m{<td\b[^>]*>(.*?)</td>}gs;
-        next unless @cells >= 2;
-        add_pair($out, $cells[1], $cells[0], $rank, 1);
-    }
-}
-
-sub parse_binran_species {
-    my ($src, $out, $html) = @_;
-    while ($html =~ m{<li>(.*?)(?=<li>|</ol>|</ul>|\z)}gs) {
-        my $item = $1;
-        $item =~ s{<a\b.*?</a>}{}gs;             # 「詳細」へのリンクを落とす
-        my @parts = $item =~ m{<i>(.*?)</i>}gs;
-        next unless @parts >= 2;
-        @parts = map { squeeze(html_text($_)) } @parts;
-        next if $parts[-1] eq 'ssp.';            # 学名のない個体群は種と衝突する
-        my $sci  = norm_sciname(join ' ', @parts);
-        next unless length $sci;
-        my $rank = @parts >= 3 ? rk('subspecies') : rk('species');
-
-        my ($tail) = $item =~ m{.*</i>(.*)\z}s;
-        $tail = squeeze(html_text(defined $tail ? $tail : ''));
-        $tail =~ s/\A(.*?\d{4}[\]\)]*)\s*//;     # 著者名と年を落とす
-        # 種レベルは閉じ括弧が欠けているので、開き括弧以降を別名として切り出す
-        my ($jap, $syn) = $tail =~ /\A(.*?)\s*[（(](.*?)[）)]?\s*\z/ ? ($1, $2) : ($tail, '');
-        add_pair($out, $jap, $sci, $rank, 1, nosplit => 1);
-        add_pair($out, $syn, $sci, $rank, 1, nosplit => 1, japvalid => 0) if length $syn;
-    }
 }
 
 #-----------------------------------------------------------------------------
@@ -3544,12 +3551,14 @@ sub external_validity {
             my %pname;
             col_scan($usage, \%needp, sub {
                 my ($id, $f) = @_;
-                $pname{$id} = defined $f->[7] ? $f->[7] : '';
+                $pname{$id} = [ (defined $f->[7] ? $f->[7] : ''),
+                                (defined $f->[9] ? $f->[9] : '') ];
             });
             for my $n (keys %parent) {
                 next if $col{$n};
                 my $a = $pname{ $parent{$n} };
-                $accepted{$n} = $a if defined $a && length $a && $a ne $n;
+                next unless $a && length $a->[0] && $a->[0] ne $n;
+                $accepted{$n} = $a;
             }
         }
     }
@@ -3572,8 +3581,14 @@ sub external_validity {
     my (%colc, %ncbic, %accc);
     $colc{ Encode::decode('UTF-8', $_, Encode::FB_DEFAULT) }  = $col{$_}  for keys %col;
     $ncbic{ Encode::decode('UTF-8', $_, Encode::FB_DEFAULT) } = $ncbi{$_} for keys %ncbi;
-    $accc{ Encode::decode('UTF-8', $_, Encode::FB_DEFAULT) }
-        = Encode::decode('UTF-8', $accepted{$_}, Encode::FB_DEFAULT) for keys %accepted;
+    for my $n (keys %accepted) {
+        # 差し替え先の rank も CoL のものを使う。CoL が亜種を種のシノニムとして
+        # いる場合、和名だけ亜種の rank のまま残ると学名と食い違うため。
+        my ($an, $ar) = @{ $accepted{$n} };
+        my $rank = exists $COL_RANK{$ar} ? rk($COL_RANK{$ar}) : undef;
+        $accc{ Encode::decode('UTF-8', $n, Encode::FB_DEFAULT) }
+            = [ Encode::decode('UTF-8', $an, Encode::FB_DEFAULT), $rank ];
+    }
     return (\%colc, \%ncbic, \%accc);
 }
 

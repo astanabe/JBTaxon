@@ -11,11 +11,7 @@
 | `staphylinidae_p069.pdf` | 1 | PDF | 日本産ハネカクシ科総目録 (九州大学リポジトリ `opac_download_md/26400/p069.pdf`) |
 | `aculeata_hym_list_2016_ver5.pdf` | 1 | PDF | 日本産有剣膜翅類目録 2016年版 (Web Archive) |
 | `trichoptera_names.html` | 1 | HTML | 日本産トビケラの種リスト https://tobikera.eco.coocan.jp/names.htm |
-| `binran_index.html` | 1 | HTML | 日本産蝶類和名学名便覧 トップ (Web Archive 20211017231224) |
-| `binran_family_<科名>_subfamily.html` | 5 | HTML | 同 亜科一覧 |
-| `binran_family_<科名>_genus.html` | 5 | HTML | 同 属一覧 |
-| `binran_family_<科名>_species.html` | 5 | HTML | 同 種一覧 |
-| `binran_subfamily_<亜科名>_tribe.html` | 21 | HTML | 同 族一覧 |
+| `butterfly_Hesperiidae.html` ほか4件 | 5 | HTML | 日本産蝶類の学名リスト 科別ページ https://japanesebutterfly.wixsite.com/butterfly-list |
 
 計 406 ファイル。
 
@@ -26,19 +22,26 @@
 - 和名に表記揺れがある（和名欄に学名が入る `Setodes (Setodes属)`、全角スペース混入 `Eubasilissa (ムラサキトビケラ 属)`、末尾の余分なスペース）。
 - NARO のトビケラ目は14ノードしかなく、専用ソース (`trichoptera_names.html`) の方が遥かに充実している。「より狭い分類群のソースを優先」が効く場面。
 
-### 日本産蝶類和名学名便覧 について
+### 日本産蝶類の学名リスト について
 
-Web Archive 上のスナップショットを階層巡回して取得する。
+科ごとに1ページ、計5ページ（セセリチョウ科・アゲハチョウ科・シロチョウ科・シジミチョウ科・タテハチョウ科）。ページ名が日本語なので `fetch_data.pl` はパーセントエンコードした URL を持ち、`butterfly_<科の学名>.html` として保存する。
+
+Wix のサイトだが本文はサーバ側で描画されているので HTML から読める。1レコードが1つの `<p class="font_N">` で、**学名だけが `font-style:italic` の span に入っている**。
 
 ```
-/                                  科（学名・和名）
-  /taxa/family/<F>/subfamily       亜科  ← トップの「詳細」
-    /taxa/subfamily/<S>/tribe      族    ← 亜科ページの「詳細」（ここが最下層）
-  /taxa/family/<F>/genus           属
-  /taxa/family/<F>/species         種
+Family Hesperiidae セセリチョウ科
+Subfamily Coeliadinae アオバセセリ亜科
+Tribe Zerynthiini タイスアゲハ族
+Genus <i>Luehdorfia</i> Cruger, 1878 ギフチョウ属
+<i>Luehdorfia japonica</i> Leech, 1889 ギフチョウ Japanese luehdorfia
+ssp. <i>yessoensis</i> Rothschild, 1918 北海道亜種
 ```
 
-科は Hesperiidae, Lycaenidae, Nymphalidae, Papilionidae, Pieridae の5件。科レベルの genus / species ページが族配下の属・種も網羅しているため、亜科・族レベルの genus / species は取得しない。`/taxa/family/<F>` のような中間パスは Web Archive に取得されていないので使わない。ライセンスは **CC BY 3.0**（出典明記が必要）。
+- **亜種の行は種小名しか書かれていない**ので直前の種の学名に連結し、和名も直前の種の和名に修飾語を付けて組み立てる（「ヒメギフチョウ 北海道亜種」）。修飾語がない亜種は種の和名をそのまま使う。
+- 種の行の「`Papilio (Menelaides) polytes`」のような**亜属名は二名法の学名からは外す**（他の情報源と照合できなくなるため）。
+- **「`Genue Troides`」のように綴りを誤った見出しがある**ので、キーワードで決まらないときは和名の接尾辞でも rank を判定する。
+- 和名のない見出し（`Tribe Astictopterini`、`Subgenus Menelaides` など）は出力に寄与しない。
+- 旧情報源は「日本産蝶類和名学名便覧」（Web Archive 経由、CC BY 3.0）だったが、2026年に新サイトが公開されたので差し替えた。
 
 ### トビケラ について
 
@@ -59,7 +62,7 @@ Google Sheets の export API を使えば技術的には取得できてしまう
 
 ## 補足
 
-- List-MJ と FernGreenList は CC0、日本産蝶類和名学名便覧は CC BY 3.0。
+- List-MJ と FernGreenList は CC0。
 - List-MJ の robots.txt は HTTP 500 を返す。RFC 9309 の厳密な解釈では 5xx は全面 disallow だが、サイト本体は正常稼働し、データは CC0、`about.html` に明示的なダウンロードリンクがある。実質は robots.txt 未設置のサーバエラーと見られる。
 - ハネカクシの九大リポジトリは `Disallow: /` だが `Allow: /opac_download_md/` があり、取得先は明示的に許可されている。
 

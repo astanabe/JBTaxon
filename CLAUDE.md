@@ -31,7 +31,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 分類群ごとに1ディレクトリ（README の見出しの括弧内が英語ディレクトリ名: `Mammals`, `Reptiles_Amphibians`, `Fishes`, `Insects`, `Spiders`, `Nematodes`, `Tanaids`, `Earthworms`, `Isopods`, `VascularPlants`, `Bryophytes`, `Lichens`, `Fungi`, `Seaweeds`, `Viruses` と全生物種を対象とする「全体」）。「全体」のディレクトリ名は **`AllTaxa`** とすることが決定済み。ステップ1・2はディレクトリ単位で完結し、ステップ3・4で横断的に統合される。
 
-`Insects` はサブディレクトリを作らず**フラットに配置する**。NARO・List-MJ・ハネカクシ・有剣膜翅類・トビケラ・蝶類便覧・shigainsect が同一ディレクトリに同居するため、**`fetch_data.pl` が付けるファイル名がそのままソース識別子を兼ねる契約**になっている（`naro_insecta_pageNNN.html` / `ListMJ3-*.xlsx` / `staphylinidae_p069.pdf` / `aculeata_hym_list_2016_ver5.pdf` / `trichoptera_names.html` / `binran_*.html`）。`generate_tables.pl` はこのファイル名でパーサを振り分けるので、命名を安易に変えないこと。
+`Insects` はサブディレクトリを作らず**フラットに配置する**。NARO・List-MJ・ハネカクシ・有剣膜翅類・トビケラ・蝶類・shigainsect が同一ディレクトリに同居するため、**`fetch_data.pl` が付けるファイル名がそのままソース識別子を兼ねる契約**になっている（`naro_insecta_pageNNN.html` / `ListMJ3-*.xlsx` / `staphylinidae_p069.pdf` / `aculeata_hym_list_2016_ver5.pdf` / `trichoptera_names.html` / `butterfly_*.html`）。`generate_tables.pl` はこのファイル名でパーサを振り分けるので、命名を安易に変えないこと。
 
 ダニ類 (`Acarids`) は情報源の「データの無断転用・無断転載は固くお断りいたします」という記述の意味が不明瞭なため、**対象外**とすることが決定済み。README からも節が削除されている。再追加しないこと。
 
@@ -57,7 +57,7 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 
 **zip の展開は `generate_tables.pl` の仕事**であり、`fetch_data.pl` では展開しない。手動配置は `fetch_data.pl` の実行後に行われるので、展開を `fetch_data.pl` に置くとファイルを置いた後にもう一度実行させることになるため。
 
-また、リンク切れに備えて Web Archive の URL を情報源としているものがあり（日本産蝶類和名学名便覧、日本産有剣膜翅類目録）、README には「リンク切れの際は古いファイルに遡って取得する」旨の要求がある。
+また、リンク切れに備えて Web Archive の URL を情報源としているものがある（日本産有剣膜翅類目録）。蝶類は2026年に新サイト（`japanesebutterfly.wixsite.com`）が公開されたので Web Archive の「日本産蝶類和名学名便覧」から差し替えた。
 
 なお `insect-web.rad.naro.go.jp/flame/tree` は昆虫・クモ類・線形動物の3ディレクトリで共通の情報源になっている。
 
@@ -68,9 +68,9 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 - **全ての http(s) 取得は `curl` で行い、ダウンロードとダウンロードの間に必ず5秒空ける。** この規則は `fetch()` に集約してあるので、`fetch()` 以外の場所で `curl` を呼んではならない。ミミズの `Crawl-Delay: 5` もこの全体規則で自動的に満たされる。5秒は要件なので定数 (`$SLEEP_SECONDS`) とし、`--sleep` オプションは設けない。
 - 既存ファイルはスキップし、`--force` で再取得する。**スキップ時は sleep しない**（ネットワークアクセスが発生していないため。中断後の再開が数秒で済む）。
 - `.part` に落として成功時のみ `rename` する。中断で切り詰められたファイルが残り、スキップ判定で「取得済み」と誤認される事故を防ぐため。スキップ方式を採る以上これは必須。
-- 巡回系（NARO・蝶類便覧・海藻）は、**レスポンスではなくディスク上のファイルを読んで**次に辿る URL を決める。再開時にスキップされたページの内容はレスポンスとして手元に来ないため。
+- 巡回系（NARO・海藻）は、**レスポンスではなくディスク上のファイルを読んで**次に辿る URL を決める。再開時にスキップされたページの内容はレスポンスとして手元に来ないため。
 - 失敗しても即座に中断せず最後まで走り切り、失敗一覧を末尾に再掲する（約510件・45分の処理で1件の失敗のために全体をやり直すのは非現実的なため）。ダウンロード失敗が1件でもあれば exit 1、手動未配置は警告のみで exit 0。
-- ソース定義は `@SOURCES` の1テーブルに宣言的にまとめてある。URL 固定方針の保守がこのテーブルの編集だけで完結するのが狙い。`type` は `file` / `naro` / `binran` / `seaweed` / `sparql` / `manual` の6種。
+- ソース定義は `@SOURCES` の1テーブルに宣言的にまとめてある。URL 固定方針の保守がこのテーブルの編集だけで完結するのが狙い。`type` は `file` / `naro` / `seaweed` / `sparql` / `manual` の5種。
 - `file` には `untar` を添えられる。`[書庫名, 展開後に存在するはずのファイル]` を書くと取得直後に `tar` で展開する。**書庫の展開を `fetch_data.pl` が行うのは NCBI taxdump だけ**。手動配置分の zip は `fetch_data.pl` の実行後に置かれるので `generate_tables.pl` の仕事だが、これは自分でダウンロードした書庫なので取得直後に展開してよい。
 - `sparql` は `AllTaxa/wikidata.rq` を QLever (`https://qlever.dev/api/wikidata`) へ POST して CSV を受け取る種別。**追加の curl オプションは `fetch()` の `extra` 引数で渡す**（`fetch()` 以外で curl を呼ばない規則を守るため）。`Accept: text/csv` を付けないと `"大腸菌"@ja` のような RDF 項形式で返る。WDQS (query.wikidata.org) は60秒制限で完走しない。
 - CLI: `--dir` / `--only`（複数指定可）/ `--force` / `--list` / `--dry-run` / `--help`。`--list` と `--dry-run` は通信しない。
@@ -123,6 +123,7 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
   - **和名の有効性は上書きしない。** CoL も NCBI も和名の有効／シノニムを判定する材料を持たないため。
   - **ソースが有効名としている学名を CoL がシノニムとしている場合は、CoL の有効名（`col:parentID` の先）に差し替えて採用する**（README の規定）。実測で約14,400件。差し替え先は元のレコードの和名・rank・出典を引き継ぎ、`japname2sciname` では有効名側が、`sciname2japname` では有効名（`scivalid=1`）とシノニム（`scivalid=0`）の両方が行になる。
   - 例: JAFList は「アオビクニン」に `Careproctus pellucidus` を当てているが CoL ではシノニムなので、`アオビクニン → Careproctus rastrinus` を採用し、`Careproctus pellucidus → アオビクニン` は `scivalid=0` として残す。
+  - **rank も差し替え先のもの（CoL の `col:rank`）を使う。** CoL は亜種を種のシノニムとしていることが多く、和名だけ亜種の rank のまま残ると学名と食い違うため（「ヒメギフチョウ 北海道亜種」→ `Luehdorfia puziloi`、rank は 31 ではなく 30）。
 - CoL のスコアは `3`=有効名 / `2`=シノニムだがその有効名と属名が同じ（＝現在の組み合わせ）/ `1`=登録はあるがそのどちらでもない / `0`=見つからない。「ヤマドリ」の `Synchiropus ijimai` と `Neosynchiropus ijimai` はどちらも `Neosynchiropus ijimae` のシノニムなので、属名の一致する後者が採用される。シノニムの有効名を引くために `NameUsage.tsv` をもう1周する。
 - **`norm_sciname` は接続語の直後だけ識別子を許す。** `sp. 1` / `subsp. 2` / `sp. L` / `sp. 'yamato'` を残しつつ、著者名を種小名と取り違えないため。`sensu` `auct.` `non` `nec` `complex` `group` `Type` `of` は名前の一部ではないのでそこで打ち切る。
 - **Catalogue of Life** — `2026-08-26_xr_coldp.zip` から展開した `NameUsage.tsv`（約3GB）と `VernacularName.tsv` を突き合わせる。巨大なので **`:encoding(UTF-8)` を通さずバイト列で行を読み、1列目の ID が必要な集合にある行だけ split して該当フィールドを decode する**。シノニムの有効名は `col:parentID` の先にあるので2周する。`language` が `jpn` の和名は 99,738件（GBIF Backbone Taxonomy の 27,558件の上位互換）。ローマ字表記の和名は `is_placeholder` が日本語文字を含まない名前として落とす（意図した挙動）。
@@ -152,21 +153,7 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
   - 和名の表記揺れがある: 和名欄に学名が入る (`Setodes (Setodes属)`)、全角スペース混入 (`Eubasilissa (ムラサキトビケラ 属)`)、末尾の余分なスペース。
   - NARO のトビケラ目は14ノードしかなく、専用ソース (tobikera.eco.coocan.jp) の方が遥かに充実している。「より狭い分類群のソースを優先」が効く場面。
 - **海藻** — `Seaweed_list_top.html` は更新履歴のポータル。実データは `Brown/*.html`, `Red/*.html`, `Green/*.html` の分類群別ページに分散。
-- **日本産蝶類和名学名便覧** — トップは科一覧のみ。科・亜科・族・属それぞれの学名／和名対応を得るには階層を辿る必要がある。「詳細」が1つ下の階層へのリンク:
-
-  ```
-  /                                  科（学名・和名）
-    /taxa/family/<F>/subfamily       亜科  ← トップの「詳細」
-      /taxa/subfamily/<S>/tribe      族    ← 亜科ページの「詳細」
-        /taxa/tribe/<T>/genus        属
-        /taxa/tribe/<T>/species      種
-      /taxa/subfamily/<S>/genus      属
-      /taxa/subfamily/<S>/species    種
-    /taxa/family/<F>/genus           属    ← 「属一覧」
-    /taxa/family/<F>/species         種    ← 「種一覧」
-  ```
-
-  族ページに「詳細」はなく、そこが最下層。`/taxa/family/<F>` のような中間パスは Web Archive に取得されていないので、上記の正確なパスを使うこと。
+- **日本産蝶類の学名リスト** — 2026年公開の Wix サイト。科ごとに1ページ（計5ページ）で、本文はサーバ側で描画されているので HTML から読める。1レコードが1つの `<p class="font_N">`、学名だけが `font-style:italic` の span に入る。亜種の行は種小名しかないので直前の種に連結する。詳細は `Insects/README.md`。
 - **List-MJ** — トップはフレームセット。Excel は `about.html` 内にリンクがある（`dl/ListMJ3-*.xlsx`）。
 
 その他の注意:
@@ -175,7 +162,7 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 - **トビケラは属名が頭文字省略形**（`C. aira`）で書かれており、直前の属名行を保持して展開する必要がある。
 - **YList** は Excel 版 (`20210514YList_download.xlsx`) が正本。同じ内容のタブ区切りテキスト (`_tab.txt`) も配布されているが**使用しない**。
 - **FernGreenList** の CSV は `Japanese name 和名` と `Synonym of Japanese name 和名異名` の列を持ち、和名シノニムをそのまま利用できる。
-- ライセンスが明確なもの: List-MJ と FernGreenList は **CC0**、日本産蝶類和名学名便覧は **CC BY 3.0**、地衣類は **CC BY 4.0**。
+- ライセンスが明確なもの: List-MJ と FernGreenList は **CC0**、地衣類は **CC BY 4.0**。
 
 ### robots.txt と利用規約（全ソース検証済み）
 
@@ -205,13 +192,13 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 - NARO 昆虫DB — `Disallow:`（空）で全面許可
 - 爬虫両生類 — robots.txt なし。サイトの著作権ポリシーは会誌掲載論文に関するもので、標準和名リストの利用制限ではない
 - 魚類 — robots.txt なし。「利用は自由ですが，できればご一報ください」＋引用要請
-- 日本産蝶類和名学名便覧 — CC BY 3.0。web.archive.org に robots.txt なし
+- 日本産蝶類の学名リスト — `japanesebutterfly.wixsite.com` の robots.txt は `Allow: /`（`*?lightbox=` のみ Disallow）
 - 地衣類 — CC BY 4.0
 - FernGreenList — CC0。`ndownloader.figshare.com` に robots.txt なし
 - YList — robots.txt なし。「右クリックで保存してお使い下さい」と明示。引用形式の指定あり
 - タナイス類・トビケラ・ワラジムシ・海藻・真菌 — robots.txt に制限なし、利用条件の記載もなし
 
-**出典明記が求められるソース**: 魚類、YList、地衣類 (CC BY)、日本産蝶類和名学名便覧 (CC BY)、哺乳類。成果物に出典・引用表記を含める仕組みが必要。
+**出典明記が求められるソース**: 魚類、YList、地衣類 (CC BY)、哺乳類。成果物に出典・引用表記を含める仕組みが必要。
 
 ### 情報源が衝突した場合の優先順位
 
@@ -244,7 +231,7 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 - `<分類群>/japname2sciname_VERSION_BUILDDATE.tsv` — `japname / sciname / japvalid / rank / subrank / sourcetitle / sourceauthor / sourceurl`。和名シノニムがある場合、同一 sciname に対し japname が異なる行が複数生じる。sciname 側にシノニムは使わない。
 - `<分類群>/sciname2japname_VERSION_BUILDDATE.tsv` — `sciname / japname / scivalid / rank / subrank / sourcetitle / sourceauthor / sourceurl`。学名シノニムがある場合、同一 japname に対し sciname が異なる行が複数生じる。japname 側にシノニムは使わない。
 
-`japvalid` / `scivalid` は1列目の名前が有効名かどうかのフラグ（0 = invalid, 1 = valid）で、シノニムなら 0。**2列目の名前側にはシノニムが現れない設計なので、このフラグは常に1列目に対応する**。位置は rank/subrank の手前（3列目）。`sourcetitle` / `sourceauthor` / `sourceurl` は採用したソースのもの（Catalogue of Life だけはエントリごとの提供元）で、**著者が3名以上なら2人目以降を省略し、日本語なら「～ら」、英語なら「～ et al.」とする**。そのため `@SOURCES` の `sourceauthor` は文字列ではなく著者名の配列で持ち、出力時に `format_authors()` で整形する。**ライセンス上は出典明記が不要なソース（CC0 など）も含め全ソースで3列とも必ず埋める**。出典明記が求められる情報源（魚類・YList・地衣類・蝶類便覧・哺乳類）の要求もこれで満たされる。値は `generate_tables.pl` の `@SOURCES` が唯一の持ち場で、原典やページに著者の記載があればその表記に従い、記載がなければ発行主体（学会・機関）を書く。
+`japvalid` / `scivalid` は1列目の名前が有効名かどうかのフラグ（0 = invalid, 1 = valid）で、シノニムなら 0。**2列目の名前側にはシノニムが現れない設計なので、このフラグは常に1列目に対応する**。位置は rank/subrank の手前（3列目）。`sourcetitle` / `sourceauthor` / `sourceurl` は採用したソースのもの（Catalogue of Life だけはエントリごとの提供元）で、**著者が3名以上なら2人目以降を省略し、日本語なら「～ら」、英語なら「～ et al.」とする**。そのため `@SOURCES` の `sourceauthor` は文字列ではなく著者名の配列で持ち、出力時に `format_authors()` で整形する。**ライセンス上は出典明記が不要なソース（CC0 など）も含め全ソースで3列とも必ず埋める**。出典明記が求められる情報源（魚類・YList・地衣類・哺乳類）の要求もこれで満たされる。値は `generate_tables.pl` の `@SOURCES` が唯一の持ち場で、原典やページに著者の記載があればその表記に従い、記載がなければ発行主体（学会・機関）を書く。
 
 **1列目はテーブル内で一意**（衝突解決で1つに絞られる）。
 
