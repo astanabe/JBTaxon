@@ -121,16 +121,28 @@ my %JAPNAME_DROP = map { $_ => 1 }
      # 和名の欄に学名と著者名が入り込んだもの
      'ツクモハイゴケ.Heterocladium.Bruch&Schimp.イセノイトツルゴケ属');
 
-# 「階層レベルを示す単語」。README の「rank・subrankについて」に挙がっている
-# 階層名の日本語のうち、**種より上のもの**を写したもの。種より上の分類群の和名は
-# 「カナ名」とこの語の組み合わせでなければ有効名にしない (README の規定)。
-# rank 値そのものは rank.def が正だが、この日本語の語は README にしかない。
-my @JAP_RANK_WORD = qw(
-    上界 ドメイン レルム 界 亜界 上門 門 亜門 上綱 綱 亜綱 下綱
-    コホート サブコホート 上目 目 亜目 下目 小目 上科 科 亜科 族 亜族
-    属 亜属 節 亜節 列 種群 種亜群
+# 「階層レベルを示す単語」と、それが表す rank。README の「rank・subrankについて」
+# に挙がっている階層名の日本語を写したもの。rank 値そのものは rank.def が正だが、
+# この日本語の語は README にしかない。
+#   - 種より上の語は、高次分類群の和名が有効名かどうかの判定に使う (README の規定)
+#   - rank との突き合わせにも使う。和名の接尾辞が示す階層と学名の rank が
+#     3段以上ずれている組は、和名と学名が別の分類群を指しているので落とす
+my %JAP_RANK_WORD = (
+    '上界' => 1, 'ドメイン' => 1, 'レルム' => 1, '界' => 2, '亜界' => 3,
+    '上門' => 4, '門' => 5, '亜門' => 6, '上綱' => 7, '綱' => 8, '亜綱' => 9,
+    '下綱' => 10, 'コホート' => 11, 'サブコホート' => 12, '上目' => 13, '目' => 14,
+    '亜目' => 15, '下目' => 16, '小目' => 17, '上科' => 18, '科' => 19, '亜科' => 20,
+    '族' => 21, '亜族' => 22, '属' => 23, '亜属' => 24, '節' => 25, '亜節' => 26,
+    '列' => 27, '種群' => 28, '種亜群' => 29, '種' => 30, '亜種' => 31,
+    '変種' => 32, '品種' => 33, '株' => 35,
 );
-my $JAP_RANK_WORD_RE = join '|', sort { length($b) <=> length($a) } @JAP_RANK_WORD;
+my $JAP_RANK_WORD_RE = join '|', sort { length($b) <=> length($a) } keys %JAP_RANK_WORD;
+# 種より上の語だけ (有効名の形の判定に使う)
+my $JAP_HIGH_RANK_WORD_RE = join '|', sort { length($b) <=> length($a) }
+                            grep { $JAP_RANK_WORD{$_} < 30 } keys %JAP_RANK_WORD;
+
+# 和名と学名が別の分類群を指しているとみなす階層の差
+my $RANK_WORD_GAP = 3;
 
 
 # Catalogue of Life (ColDP) の分類階級と、有効名として扱わない status。
@@ -642,8 +654,11 @@ sub write_rejected {
     binmode $fh, ':encoding(UTF-8)';
     print $fh join("\t", @$_), "\n" for @REJECTED;
     close $fh;
-    note($src, sprintf('括弧の対応が取れていない和名 %d 件を落としました (%s)',
-                       scalar @REJECTED, relname($path)));
+    my %why;
+    $why{ $_->[1] =~ /\A(\S+)/ ? $1 : $_->[1] }++ for @REJECTED;
+    note($src, sprintf('%d 件のレコードを落としました (%s): %s',
+                       scalar @REJECTED, relname($path),
+                       join(', ', map { "$_ $why{$_}件" } sort keys %why)));
 }
 
 # ソースごとのパーサへの振り分け。fetch_data.pl と同じくコードリファレンスの表は
@@ -1959,7 +1974,20 @@ sub japname_valid_form {
     return 0 unless defined $jap && length $jap;
     return 0 unless $jap =~ /[\x{30A1}-\x{30FA}]/;      # カタカナを含むこと
     return 1 if !defined $rank || $rank >= rk('species');
-    return $jap =~ /(?:$JAP_RANK_WORD_RE)\z/ ? 1 : 0;
+    return $jap =~ /(?:$JAP_HIGH_RANK_WORD_RE)\z/ ? 1 : 0;
+}
+
+# 和名の接尾辞が示す階層と rank の差。階層語で終わっていなければ 0。
+# 「種」「種群」は階級ではなく記述として使われるので突き合わせない
+# (「トゲエラカゲロウ属の一種」「キヅタキジラミ近縁種」「シマドジョウ種群」)。
+my %JAP_RANK_WORD_LOOSE = map { $_ => 1 } ('種', '種群', '種亜群');
+
+sub rank_word_gap {
+    my ($jap, $rank) = @_;
+    return 0 unless defined $jap && defined $rank;
+    return 0 unless $jap =~ /($JAP_RANK_WORD_RE)\z/;
+    return 0 if $JAP_RANK_WORD_LOOSE{$1};
+    return $JAP_RANK_WORD{$1} - $rank;
 }
 
 # 和名の出力に使える文字 (README の規定)。漢字・ひらがな・全角カナ・踊り字 (々)・
@@ -2059,6 +2087,19 @@ sub add_pair {
     ($rank, $subrank) = rank_from_sciname($sci)
         if $rank == rk('species')
         && $sci =~ /(?:\A| )(?:subsp|ssp|var|subvar|f|sect|nothosubsp|nothovar)\. /;
+    # 和名の接尾辞が示す階層と rank が離れすぎているものは、和名と学名が別の
+    # 分類群を指している。「アマナ属 / Amana erythronioides (種)」「アオサンゴ目 /
+    # Helioporidae (科)」「アーケアメーバ下門 / Archamoebae (属)」など。
+    # 1〜2段のずれは分類体系の版の違い (「アオイ科 / Malvoideae (亜科)」は APG で
+    # 科から亜科に降格したもの、「シマドジョウ種群 / Cobitis biwae (種)」は
+    # 種群の和名) なので落とさない。
+    if (length $head) {
+        my $gap = abs rank_word_gap($head, $rank);
+        if ($gap >= $RANK_WORD_GAP) {
+            reject_japname($head, $sci, "和名の階層と rank が $gap 段ずれ");
+            return;
+        }
+    }
     # 有効名の形をしていない和名はシノニム扱いにする (README の規定)。
     # rank は上で名前の形に合わせた後の値を使う。
     $jv = 0 if $jv && !japname_valid_form($head, $rank);
@@ -2918,8 +2959,17 @@ sub parse_lichens {
             $body =~ s{<span\b[^>]*class="refs".*?</span>\s*\z}{}s;
             my $t = squeeze(html_text($body));
             next unless $t =~ /\A(.*?)\s*\x{2192}\s*(.*)\z/;
-            my ($syn, $acc) = (norm_sciname($1), norm_sciname($2));
+            my ($left, $right) = ($1, $2);
+            # 「Arthrorhaphis citrinella auct. → A. alpina, A. bullata, A. farinosa」
+            # のように有効名が複数あるシノニムは、どの和名に対応するか決められない
+            # ので採らない。norm_sciname は「,」で切れて属名だけを返すため、
+            # そのまま引くと属の和名がシノニムに付いてしまう。
+            next if $right =~ /,/;
+            $right =~ s/[?？.]+\s*\z//;   # 「→ Bacidia rubella?」の末尾の記号
+            my ($syn, $acc) = (norm_sciname($left), norm_sciname($right));
             next unless length $syn && length $acc;
+            # 有効名が属名だけに切り詰められたときは属の和名が付いてしまう
+            next if $acc !~ / / && $syn =~ / /;
             my $jap = $jap_of{$acc};
             next unless defined $jap && length $jap;
             my ($rank, $subrank) = rank_from_sciname($syn);
@@ -3571,9 +3621,15 @@ sub parse_hattoria7 {
                 my ($left, $right) = ($1, $2);
                 my $syn = norm_sciname($left);
                 $right =~ s/,\s*fide\b.*\z//s;
+                # 行末の句点を落とす。「= A. histricosa.」の「histricosa.」は
+                # norm_sciname が名前らしくないトークンとして切り捨ててしまい、
+                # 有効名が属名だけになって属の和名がシノニムに付く。
+                $right =~ s/[?？.]+\s*\z//;
                 $right =~ s/\A([A-Z])\.\s+/hattoria_expand($genus, $1)/e;
                 my $acc = norm_sciname($right);
                 next unless length $syn && length $acc;
+                # 有効名が属名だけに切り詰められたときは属の和名が付いてしまう
+                next if $acc !~ / / && $syn =~ / /;
                 push @pending, [ $syn, $acc ];
                 next;
             }
@@ -3834,10 +3890,19 @@ sub parse_col {
             my ($name, $vsrc) = @$j;
             my $sid  = length $vsrc ? $vsrc : $usrc;
             my $info = (length $sid && $meta->{$sid}) ? $meta->{$sid} : undef;
-            add_pair(\@out, $name, $sci, $rank, $subrank,
+            # iNaturalist Taxonomy は日本産スズメバチ・アシナガバチの亜種を
+            # 「Vespa analis f. insularis」のように f. で書く。品種ではないので
+            # f. を外して亜種として扱う。この提供元の f. 付きは 15 件あり、
+            # すべてこの形 (本物の品種は1件もない)。
+            my ($csci, $crank, $csubrank) = ($sci, $rank, $subrank);
+            if ($info && $info->[0] eq 'iNaturalist Taxonomy' && $csci =~ / f\. /) {
+                $csci =~ s/ f\. / /;
+                ($crank, $csubrank) = (rk('subspecies'), 1);
+            }
+            add_pair(\@out, $name, $csci, $crank, $csubrank,
                      scivalid => $valid, srcinfo => $info);
             add_pair(\@out, $name, $acc, $arank, $asubrank, srcinfo => $info)
-                if !$valid && length $acc && $acc ne $sci;
+                if !$valid && length $acc && $acc ne $csci;
         }
     }
     return \@out;
@@ -4216,17 +4281,23 @@ sub external_validity {
             my $valid = $COL_INVALID_STATUS{ defined $f[6] ? $f[6] : '' } ? 0 : 1;
             # 同じ学名が別の提供元で有効名としても載っていれば有効名を採る
             $col{$name} = $valid if !exists $col{$name} || $valid;
-            # シノニムの有効名は col:parentID の先にある
-            if (!$valid && defined $f[4] && length $f[4] && !exists $parent{$name}) {
-                $parent{$name} = $f[4];
-                $srank{$name}  = defined $f[9] ? $f[9] : '';
+            # シノニムの有効名は col:parentID の先にある。**同名異物があるので
+            # 差し替え先は1つに定まらない**——「Raphidae」は CoL に2つあり、
+            # 一方はハエの Dolichopodini、他方はドードーの Raphinae のシノニム。
+            # 先に見つかった方を採ると「ドードー科 → Dolichopodini」になる。
+            # 候補を全部集めておいて、名前が割れたら差し替えない。
+            if (!$valid && defined $f[4] && length $f[4]) {
+                push @{ $parent{$name} }, $f[4];
+                $srank{$name} = defined $f[9] ? $f[9] : '' unless exists $srank{$name};
             }
         }
         close $fh;
 
         # 有効名として採り直す学名を引く
-        my %needp = map { $_ => 1 } grep { !$col{$_} } keys %parent;
-        %needp = map { $parent{$_} => 1 } keys %needp;
+        my %needp;
+        for my $n (grep { !$col{$_} } keys %parent) {
+            $needp{$_} = 1 for @{ $parent{$n} };
+        }
         if (%needp) {
             my %pname;
             col_scan($usage, \%needp, sub {
@@ -4236,8 +4307,13 @@ sub external_validity {
             });
             for my $n (keys %parent) {
                 next if $col{$n};
-                my $a = $pname{ $parent{$n} };
-                next unless $a && length $a->[0] && $a->[0] ne $n;
+                # 差し替え先の名前が割れる同名異物は差し替えない
+                my %cand = map { $pname{$_} ? ($pname{$_}[0] => $pname{$_}) : () }
+                           @{ $parent{$n} };
+                delete $cand{$n};
+                next unless keys(%cand) == 1;
+                my ($a) = values %cand;
+                next unless $a && length $a->[0];
                 # CoL は亜種を種のシノニムとして畳んでいることが多い。こういう
                 # 「下位の階層を上位の階層のシノニムにしている」判定は採用せず、
                 # ソース側の階層のまま残す。
