@@ -858,6 +858,12 @@ sub merge_directory {
 
     # 第2周: 対応付けを決める。2列目に来る名前は、解決後の有効性が 1 のものに
     # 限る。こうしておけば「2列目にシノニムは使わない」が構造として保証される。
+    # **衝突キーはどちらの表も和名と学名の組**。同じ和名が別の学名を指す行も、
+    # 同じ学名が別の和名を持つ行も、どちらも残す (「馬パピローマウイルス1型」〜
+    # 「7型」から作られる「馬パピローマウイルス」は型ごとに学名が違うので4行に
+    # なり、3つの型が1種にまとめられた Dyorhopapillomavirus 1 は和名を3つ持つ)。
+    # 和名と学名が同じ行だけを1つにまとめ、そのときどのソースの出典を出すかを
+    # 狭さ→新しさ→定義順で決める。
     my (%adopt_j2s, %adopt_s2j);
     for my $e (@records) {
         my ($r, $h) = @$e;
@@ -867,14 +873,14 @@ sub merge_directory {
         my $cand = { sci => $sci, jap => $jap, rank => $rank, subrank => $subrank,
                      src => $h->{src}, order => $h->{order},
                      st => $st, sa => $sa, su => $su };
-        adopt(\%adopt_j2s, $jap, $cand) if $sv && $svalid;
-        adopt(\%adopt_s2j, $sci, $cand) if $jv && $jvalid && !$nos2j;
+        adopt(\%adopt_j2s, "$jap\t$sci", $cand) if $sv && $svalid;
+        adopt(\%adopt_s2j, "$sci\t$jap", $cand) if $jv && $jvalid && !$nos2j;
         next unless $sv && !$svalid && exists $fixed{$sci};
         my ($aname, $arank) = @{ $fixed{$sci} };
         my $fix = { %$cand, sci => $aname };
         $fix->{rank} = $arank if defined $arank;
-        adopt(\%adopt_j2s, $jap, $fix);
-        adopt(\%adopt_s2j, $aname, $fix) if $jv && $jvalid && !$nos2j;
+        adopt(\%adopt_j2s, "$jap\t$aname", $fix);
+        adopt(\%adopt_s2j, "$aname\t$jap", $fix) if $jv && $jvalid && !$nos2j;
     }
 
     my $j2s = write_final($dir, 'japname2sciname', \%adopt_j2s, \%validity, 'j');
@@ -961,14 +967,16 @@ sub write_final {
     my $n = 0;
     for my $key (sort keys %$table) {
         my $c = $table->{$key};
-        my $other = $kind eq 'japname2sciname' ? $c->{sci} : $c->{jap};
-        my $v = $validity->{"$vprefix\t$key"};
+        # キーはどちらの表も「1列目<TAB>2列目」。列は候補から取る。
+        my ($first, $other) = $kind eq 'japname2sciname'
+                            ? ($c->{jap}, $c->{sci}) : ($c->{sci}, $c->{jap});
+        my $v = $validity->{"$vprefix\t$first"};
         my $valid = $v ? $v->[0] : 1;
         # レコード単位の出典があればそれを使う (Catalogue of Life の sourceID 由来)
         my $title  = length $c->{st} ? $c->{st} : $c->{src}{sourcetitle};
         my $author = length $c->{sa} ? $c->{sa} : format_authors($c->{src}{sourceauthor});
         my $url    = length $c->{su} ? $c->{su} : $c->{src}{sourceurl};
-        print $fh join("\t", $key, $other, $valid, $c->{rank}, $c->{subrank},
+        print $fh join("\t", $first, $other, $valid, $c->{rank}, $c->{subrank},
                        $title, $author, $url), "\n";
         $n++;
     }
