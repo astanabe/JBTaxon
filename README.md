@@ -25,6 +25,10 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
   - 和名→学名および学名→和名テーブルのTSVから和名読み→和名および和名読み→学名を日本語入力IMEで実現する単一の辞書ファイルTSVを生成する
 5. `add_to_yomi.pl`
   - 和名→学名テーブルから、既存の`yomi.tsv`にyomiデータが存在しないためyomiを自動生成できない和名を検出して`yomi.tsv`の末尾にyomi空欄でjapnameを追加する
+6. `sciname2japname.pl`
+  - 学名をクエリとして`jbtaxon_VERSION_BUILDDATE.sqlite3`のsciname2japnameテーブルを検索し、和名を返す
+7. `japname2sciname.pl`
+  - 和名をクエリとして`jbtaxon_VERSION_BUILDDATE.sqlite3`のjapname2scinameテーブルを検索し、学名を返す
 
 なお、種より上位の高次分類群(科や門など)や、種より下位の低次分類群(亜種・品種など)の和名・学名も生データファイルに含まれていれば出力します。
 
