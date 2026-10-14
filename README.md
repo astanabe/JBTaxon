@@ -54,11 +54,11 @@ yomi    japname
 
 - https://www.nilim.go.jp/lab/fbg/ksnkankyo/mizukokuweb/system/seibutsuListfile.htm
 
-#### Catalogue of Life (2026-08-26 XR) (Olaf Bánki et al.)
+#### Catalogue of Life (2026-09-25 XR) (Olaf Bánki et al.)
 
-以下のURLから取得できるzipファイルがデータファイルを含む配布ファイルです。`fetch_data.pl`が実行されると自動的に`AllTaxa/2026-08-26_xr_coldp.zip`としてダウンロードされます。
+以下のURLから取得できるzipファイルがデータファイルを含む配布ファイルです。`fetch_data.pl`が実行されると自動的に`AllTaxa/2026-09-25_xr_coldp.zip`としてダウンロードされます。
 
-- https://download.checklistbank.org/col/monthly/2026-08-26_xr_coldp.zip
+- https://download.checklistbank.org/col/monthly/2026-09-25_xr_coldp.zip
 
 #### Wikidata (Wikidata contributors)
 
@@ -84,7 +84,7 @@ yomi    japname
 
 ### 魚類 (Fishes)
 
-#### 日本産魚類全種目録 (本村 浩之)
+#### 日本産魚類全種目録 ver. 42 (2026年8月27日版) (本村 浩之)
 
 以下のURLで提供されているExcelファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
@@ -104,7 +104,7 @@ yomi    japname
 
 - https://sites.google.com/view/shigainsect/
 
-#### List-MJ 日本産蛾類総目録 (神保 宇嗣)
+#### List-MJ 日本産蛾類総目録 2021.6.3版 (神保 宇嗣)
 
 以下のURLで提供されているExcelファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
@@ -116,11 +116,11 @@ yomi    japname
 
 - https://japanesebutterfly.wixsite.com/butterfly-list
 
-#### 日本産トビケラの種リスト (野崎 隆夫)
+#### 日本産トビケラの種名一覧 (日本トビケラ情報ネットワーク)
 
-以下のURLのHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+以下のURLに埋め込まれているGoogle Docsドキュメントがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
-- https://tobikera.eco.coocan.jp/names.htm
+- https://sites.google.com/view/tobikera/home/checklist
 
 #### 日本産ハネカクシ科総目録（昆虫綱：甲虫目）(柴田 泰利・丸山 宗利・保科 英人・岸本 年郎・直海 俊一郎・野村 周平・Volker Puthz・島田 孝・渡辺 泰明・山本 周平)
 
