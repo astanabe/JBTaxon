@@ -100,7 +100,7 @@ yomi    japname
 
 #### 滋賀県昆虫目録2025 (滋賀県昆虫目録作成グループ)
 
-以下のURLで提供されているExcelファイルがデータファイルです。Google Driveからは自動ダウンロードが禁止されているので、手動でダウンロードして`Insects`ディレクトリ内に配置して下さい(一括ダウンロードzipファイルでも各目のxlsxファイルでもどちらでも構いません。zipファイルは自動的に展開します)。
+以下のURLで提供されているGoogle Spreadsheetシートがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://sites.google.com/view/shigainsect/
 
@@ -118,7 +118,7 @@ yomi    japname
 
 #### 日本産トビケラの種名一覧 (日本トビケラ情報ネットワーク)
 
-以下のURLに埋め込まれているGoogle Docsドキュメントがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
+以下のURLに埋め込まれているGoogle Spreadsheetシートがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 
 - https://sites.google.com/view/tobikera/home/checklist
 
