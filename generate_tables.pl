@@ -894,8 +894,20 @@ sub merge_directory {
         my ($aname, $arank) = @{ $fixed{$sci} };
         my $fix = { %$cand, sci => $aname };
         $fix->{rank} = $arank if defined $arank;
+        # 差し替えで rank が変わるので、和名の階層語との突き合わせをやり直す。
+        # add_pair の検査はソースが付けた rank に対して済んでいるだけで、
+        # external_validity の検査も**全ディレクトリ分の rank をまとめて**見て
+        # いるため、同じ学名を別の階層で載せているソースがあるとすり抜ける
+        # (「セドイデス節」は海藻リストが節、Catalogue of Life が亜科)。
+        next if rank_word_far($jap, $fix->{rank});
         adopt(\%adopt_j2s, "$jap\t$aname", $fix);
-        adopt(\%adopt_s2j, "$aname\t$jap", $fix) if $jv && $jvalid && !$nos2j;
+        next unless $jv && $jvalid && !$nos2j;
+        # 和名が元の学名の音写でしかないなら、差し替え先の有効和名にはしない。
+        # 「ヒアシンス科」は Hyacinthaceae の音写であって Asparagaceae の和名
+        # ではないので、「Asparagaceae -> ヒアシンス科」の行は出さない。
+        # japname2sciname には残るので、読みから有効名は引ける。
+        next if sciname_translit($jap, $sci) && !sciname_translit($jap, $aname);
+        adopt(\%adopt_s2j, "$aname\t$jap", $fix);
     }
 
     my $j2s = write_final($dir, 'japname2sciname', \%adopt_j2s, \%validity, 'j');
@@ -1990,6 +2002,13 @@ sub rank_word_gap {
     return $JAP_RANK_WORD{$1} - $rank;
 }
 
+# 和名の階層語と rank が離れすぎているか。離れていればその段数を返す。
+sub rank_word_far {
+    my ($jap, $rank) = @_;
+    my $gap = abs rank_word_gap($jap, $rank);
+    return $gap >= $RANK_WORD_GAP ? $gap : 0;
+}
+
 # 和名の出力に使える文字 (README の規定)。漢字・ひらがな・全角カナ・踊り字 (々)・
 # 長音符 (ー)・半角英数字・ギリシャ文字と、記号は中黒 (・)・ハイフン (-)・
 # ピリオド (.) だけ。全角カナの範囲 U+30A1-U+30FC に中黒と長音符が入る。
@@ -2044,6 +2063,179 @@ sub japanese_chars {
 }
 
 #-----------------------------------------------------------------------------
+# 和名が学名の音写かどうか
+#
+# Catalogue of Life がシノニムとした学名を有効名に差し替えるとき、和名はその
+# まま引き継がれる。和名が元の学名の音写でしかない場合、差し替え先の有効和名
+# として出すと「Asparagaceae の和名はヒアシンス科」のような誤りになる
+# (ヒアシンス科は Hyacinthaceae の音写であって Asparagaceae の和名ではない)。
+# これを見分けるために、カタカナの和名をローマ字に直し、学名側も綴りの揺れを
+# 均したうえで**子音の並び**で突き合わせる。
+#
+# 母音を落とすのは、日本語が子音の間に母音を差し込むため。
+# Aspergillus = a-s-p-e-r-g-i-ll-u-s / アスペルギルス = a-su-pe-ru-gi-ru-su で、
+# 子音だけにすればどちらも sprgrs になる。実測で音写は 0.80〜1.00、無関係な
+# 和名 (「アイゴ」/ Siganus、「アイナメ」/ Hexagrammos) は 0.00〜0.33 に落ちる。
+#
+# **この判定だけで和名を捨ててはならない。** ラテン名が和名由来のもの
+# (「ワサビ属」/ Wasabia、「キヌガサソウ」/ Kinugasa、「ヒジキ」/ Hizikia) も
+# 音写として一致するので、使うのは「差し替え先の有効和名にしない」という
+# 限られた場面だけにする。元の組と japname2sciname の行は残る。
+#-----------------------------------------------------------------------------
+my %KANA_ROMA = (
+    'ア' => 'a',  'イ' => 'i',  'ウ' => 'u',  'エ' => 'e',  'オ' => 'o',
+    'カ' => 'ka', 'キ' => 'ki', 'ク' => 'ku', 'ケ' => 'ke', 'コ' => 'ko',
+    'ガ' => 'ga', 'ギ' => 'gi', 'グ' => 'gu', 'ゲ' => 'ge', 'ゴ' => 'go',
+    'サ' => 'sa', 'シ' => 'si', 'ス' => 'su', 'セ' => 'se', 'ソ' => 'so',
+    'ザ' => 'za', 'ジ' => 'zi', 'ズ' => 'zu', 'ゼ' => 'ze', 'ゾ' => 'zo',
+    'タ' => 'ta', 'チ' => 'ti', 'ツ' => 'tu', 'テ' => 'te', 'ト' => 'to',
+    'ダ' => 'da', 'ヂ' => 'zi', 'ヅ' => 'zu', 'デ' => 'de', 'ド' => 'do',
+    'ナ' => 'na', 'ニ' => 'ni', 'ヌ' => 'nu', 'ネ' => 'ne', 'ノ' => 'no',
+    'ハ' => 'ha', 'ヒ' => 'hi', 'フ' => 'hu', 'ヘ' => 'he', 'ホ' => 'ho',
+    'バ' => 'ba', 'ビ' => 'bi', 'ブ' => 'bu', 'ベ' => 'be', 'ボ' => 'bo',
+    'パ' => 'pa', 'ピ' => 'pi', 'プ' => 'pu', 'ペ' => 'pe', 'ポ' => 'po',
+    'マ' => 'ma', 'ミ' => 'mi', 'ム' => 'mu', 'メ' => 'me', 'モ' => 'mo',
+    'ヤ' => 'ya', 'ユ' => 'yu', 'ヨ' => 'yo',
+    'ラ' => 'ra', 'リ' => 'ri', 'ル' => 'ru', 'レ' => 're', 'ロ' => 'ro',
+    'ワ' => 'wa', 'ヰ' => 'wi', 'ヱ' => 'we', 'ヲ' => 'wo', 'ン' => 'n',
+    'ヴ' => 'vu', 'ヷ' => 'va', 'ヺ' => 'vo',
+);
+my %KANA_SMALL_VOWEL = ('ァ' => 'a', 'ィ' => 'i', 'ゥ' => 'u', 'ェ' => 'e', 'ォ' => 'o');
+my %KANA_SMALL_YA    = ('ャ' => 'ya', 'ュ' => 'yu', 'ョ' => 'yo', 'ヮ' => 'wa');
+
+# 子音の種別。音写は綴りではなく音で写されるので、同じ音になる字をまとめる
+# (ラテン語の l は日本語では ラ行、v は バ行、c は k か s になる)。
+my %ROMA_CONSONANT = (
+    'k' => 'k', 'g' => 'g', 'c' => 'k', 'q' => 'k',
+    's' => 's', 'z' => 's', 'j' => 's',
+    't' => 't', 'd' => 't',
+    'n' => 'n', 'm' => 'm',
+    'h' => 'h', 'f' => 'h',
+    'b' => 'b', 'v' => 'b', 'w' => 'b', 'p' => 'p',
+    'r' => 'r', 'l' => 'r',
+);
+
+# 音写とみなす一致度と、比べるのに足りる子音の数。
+my $TRANSLIT_SIM = 0.8;
+my $TRANSLIT_MIN = 3;
+
+# カタカナをローマ字にする。促音と長音は子音の並びには効かないので落とす。
+sub kana_to_roma {
+    my ($s) = @_;
+    my @c = split //, $s;
+    my $r = '';
+    for my $c (@c) {
+        if (exists $KANA_ROMA{$c})       { $r .= $KANA_ROMA{$c}; next }
+        # 「キャ」は ki + ya ではなく kya
+        if (exists $KANA_SMALL_YA{$c})   { $r =~ s/[aiueo]\z//; $r .= $KANA_SMALL_YA{$c}; next }
+        # 「テ」+「ィ」は ti、「ウ」+「ィ」は wi。u が単独の音節のときだけ w に
+        # する (そうしないと「フ」+「ィ」が hwi になり、子音が1つ増えてしまう)。
+        if (exists $KANA_SMALL_VOWEL{$c}) {
+            if ($r =~ /(?:\A|[aiueo])u\z/) { $r =~ s/u\z/w/ }
+            else                            { $r =~ s/[aiueo]\z// }
+            $r .= $KANA_SMALL_VOWEL{$c};
+            next;
+        }
+        next if $c eq 'ッ' || $c eq 'ー';
+        $r .= lc $c;
+    }
+    return $r;
+}
+
+# ラテン文字の学名をローマ字相当に均す。二重字と、ラテン語で読みが変わる綴りを
+# 日本語の音写が従う形に寄せる (ph は f、ch と c は k、ae は e)。
+sub latin_to_roma {
+    my ($s) = @_;
+    $s = lc $s;
+    $s =~ s/[^a-z]+//g;
+    $s =~ s/sch/sk/g;
+    $s =~ s/ph/f/g;
+    $s =~ s/th/t/g;
+    $s =~ s/rh/r/g;
+    $s =~ s/ch/k/g;
+    $s =~ s/qu/kw/g;
+    $s =~ s/x/ks/g;
+    $s =~ s/c([eiy])/s$1/g;
+    $s =~ s/c/k/g;
+    $s =~ s/ae/e/g;
+    $s =~ s/oe/e/g;
+    $s =~ s/j/z/g;
+    return $s;
+}
+
+# ローマ字から子音の並びを作る。母音と y は落とし、重子音は1つにまとめる。
+sub consonant_skeleton {
+    my ($roma) = @_;
+    my $out = '';
+    for my $c (split //, $roma) {
+        next unless exists $ROMA_CONSONANT{$c};
+        my $k = $ROMA_CONSONANT{$c};
+        next if length($out) && substr($out, -1) eq $k;
+        $out .= $k;
+    }
+    return $out;
+}
+
+sub levenshtein {
+    my ($a, $b) = @_;
+    my @a = split //, $a;
+    my @b = split //, $b;
+    return scalar @b unless @a;
+    return scalar @a unless @b;
+    my @prev = (0 .. scalar @b);
+    for my $i (1 .. scalar @a) {
+        my @cur = ($i);
+        for my $j (1 .. scalar @b) {
+            my $sub = $prev[$j - 1] + ($a[$i - 1] eq $b[$j - 1] ? 0 : 1);
+            my $min = $prev[$j] + 1;
+            $min = $cur[$j - 1] + 1 if $cur[$j - 1] + 1 < $min;
+            $min = $sub             if $sub             < $min;
+            $cur[$j] = $min;
+        }
+        @prev = @cur;
+    }
+    return $prev[-1];
+}
+
+sub skeleton_sim {
+    my ($a, $b) = @_;
+    return 0 unless length $a && length $b;
+    my $max = length($a) > length($b) ? length($a) : length($b);
+    return 1 - levenshtein($a, $b) / $max;
+}
+
+# 和名のうち音写にあたる部分。末尾の階層語を外した残りがカタカナだけでなければ
+# 音写ではない (「ヤマトシジミ」のような和語の和名はここで外れる)。
+sub katakana_body {
+    my ($jap) = @_;
+    return '' unless defined $jap && length $jap;
+    my $body = $jap;
+    $body =~ s/(?:$JAP_RANK_WORD_RE)\z//;
+    $body =~ s/[\x{30FB}.\-]//g;
+    return '' unless length $body && $body =~ /\A[\x{30A1}-\x{30FC}]+\z/;
+    return $body;
+}
+
+# 和名が学名の音写か。学名が複数語のときは全体と突き合わせるが、和名に中黒が
+# なければ属名だけの音写でもよい (Wikidata の「アウストリアダクティルス」は
+# 記事名が属名で、学名の欄がその模式種「Austriadactylus cristatus」になる)。
+sub sciname_translit {
+    my ($jap, $sci) = @_;
+    return 0 unless defined $sci && length $sci;
+    my $body = katakana_body($jap);
+    return 0 unless length $body;
+    my $ks = consonant_skeleton(kana_to_roma($body));
+    return 0 unless length($ks) >= $TRANSLIT_MIN;
+    # 接続語は音写に現れないので外す
+    (my $t = $sci) =~ s/\b(?:subsp|ssp|var|subvar|f|sect|nothosubsp|nothovar|sp|spp|cf|aff)\.//g;
+    return 1 if skeleton_sim($ks, consonant_skeleton(latin_to_roma($t))) >= $TRANSLIT_SIM;
+    return 0 if index($jap, "\x{30FB}") >= 0;
+    my ($genus) = grep { length } split /\s+/, $t;
+    return 0 unless defined $genus && length($genus) >= 4;
+    return skeleton_sim($ks, consonant_skeleton(latin_to_roma($genus))) >= $TRANSLIT_SIM ? 1 : 0;
+}
+
+#-----------------------------------------------------------------------------
 # パーサ共通のヘルパ
 #
 # パーサは [ japname, sciname, japvalid, scivalid, rank, subrank ] の配列を返す。
@@ -2093,9 +2285,13 @@ sub add_pair {
     # 1〜2段のずれは分類体系の版の違い (「アオイ科 / Malvoideae (亜科)」は APG で
     # 科から亜科に降格したもの、「シマドジョウ種群 / Cobitis biwae (種)」は
     # 種群の和名) なので落とさない。
+    # **代表の和名だけでなく別名にも当てる。** Wikipedia の曖昧さ回避の括弧が
+    # 別名として切り出されるので (「タカノツメ（ウコギ科）」の「ウコギ科」、
+    # 「ウラナミジャノメ（裏波蛇目）」の「裏波蛇目」)、代表だけを見ていると
+    # 「ウコギ科 / Gamblea innovans (種)」のような行が残る。代表が外れたときは
+    # レコードごと落とし、別名が外れたときはその名前だけを落とす。
     if (length $head) {
-        my $gap = abs rank_word_gap($head, $rank);
-        if ($gap >= $RANK_WORD_GAP) {
+        if (my $gap = rank_word_far($head, $rank)) {
             reject_japname($head, $sci, "和名の階層と rank が $gap 段ずれ");
             return;
         }
@@ -2113,6 +2309,10 @@ sub add_pair {
     # 括弧内の別名は和名シノニム扱い。学名側の有効性はそのまま引き継ぐ。
     for my $s (@syn) {
         next if is_placeholder($s, $sci);
+        if (my $gap = rank_word_far($s, $rank)) {
+            reject_japname($s, $sci, "別名の階層と rank が $gap 段ずれ");
+            next;
+        }
         push @names, [ $s, 0 ];
     }
     # 型や末尾の識別子を外した和名も和名シノニムとして足す (全ソース共通の規則)。
@@ -2120,6 +2320,7 @@ sub add_pair {
     for my $n (map { $_->[0] } @names) {
         for my $b (base_japnames($n)) {
             next if $seen{$b}++ || is_placeholder($b, $sci);
+            next if rank_word_far($b, $rank);
             push @names, [ $b, 0 ];
         }
     }
@@ -4061,6 +4262,24 @@ my %WIKIDATA_RANK = (
     '系統群' => 'clade', 'クレード' => 'clade',
 );
 
+# ウイルスの学名は旧 ICTV 式の英語名で書かれていることがある
+# (「Influenza A virus」「West Nile virus」「Macacine herpesvirus 1」)。
+# norm_sciname の「名前らしいトークンだけ採る」規則は2語目以降の大文字始まりや
+# 数字で打ち切るので、そのままでは「Influenza」「West」「Macacine herpesvirus」に
+# なってしまう。ICTV の xlsx と同じ rawsci の扱いにするため、ウイルス系の名前を
+# 見分ける。語の途中に現れる綴りも拾うので ICTV の二名法
+# (「Alphainfluenzavirus influenzae」) もこちらを通るが、norm_sciname が
+# 切り詰めない形なので結果は変わらない。
+# **レルムや界の語尾 (-viria / -virae) は見ない。** 単語1語なので rawsci にする
+# 必要がなく、入れると「Coralliophila elvirae」のような種小名に当たってしまう。
+sub looks_virus_name {
+    my ($s) = @_;
+    return 0 unless defined $s && length $s;
+    return 1 if $s =~ /vir(?:us|oid|usoid)/i;
+    return 1 if $s =~ /\b(?:phages?|satellite)\b/i;
+    return 0;
+}
+
 sub parse_wikidata {
     my ($src, $paths) = @_;
     require Text::CSV;
@@ -4074,7 +4293,14 @@ sub parse_wikidata {
         while (my $r = $csv->getline($fh)) {
             my $get = sub { my ($k) = @_;
                             return exists $ix{$k} && defined $r->[$ix{$k}] ? $r->[$ix{$k}] : '' };
-            my $sci = norm_sciname($get->('sci'));
+            # ウイルスの学名は旧 ICTV 式の英語名で書かれていることがあるので、
+            # ICTV の xlsx と同じく rawsci で学名をそのまま使う (下のコメント)。
+            my $raw = looks_virus_name($get->('sci')) ? 1 : 0;
+            # P225 の頭文字が小文字のことがある (「severe acute respiratory
+            # syndrome coronavirus 2」)。norm_sciname は大文字始まりでない学名を
+            # 落とすので、rawsci の経路でも頭文字を大文字に揃える。
+            my $sci = $raw ? ucfirst space_sci_digits(fixup_chars($get->('sci')))
+                           : norm_sciname($get->('sci'));
             my $jap = $get->('ja');
             next unless length $sci && length $jap;
             # 栽培品種は分類群ではない。ja ラベルが品種名 (「アイスバーグ」
@@ -4094,15 +4320,20 @@ sub parse_wikidata {
                 ($rank, $subrank) = (rk($WIKIDATA_RANK{$r_ja}), 1);
                 last;
             }
-            ($rank, $subrank) = rank_from_sciname($sci) unless defined $rank;
-            add_pair(\@out, $jap, $sci, $rank, $subrank);
+            unless (defined $rank) {
+                # 複数語の旧 ICTV 式のウイルス名は種の指定なので、語数から階層を
+                # 決める rank_from_sciname は使わない (3語を亜種とみなすため)。
+                ($rank, $subrank) = $raw && $sci =~ / /
+                                  ? (rk('species'), 1) : rank_from_sciname($sci);
+            }
+            add_pair(\@out, $jap, $sci, $rank, $subrank, rawsci => $raw);
             # 種以下の commons は俗名の欄なので採らない (上のコメント参照)
             next if $rank >= rk('species');
             my $head = (split_japsyn($jap))[0];
             for my $c (split /\|/, $get->('commons')) {
                 next unless looks_japanese($c);
                 next if (split_japsyn($c))[0] eq $head;
-                add_pair(\@out, $c, $sci, $rank, $subrank, japvalid => 0);
+                add_pair(\@out, $c, $sci, $rank, $subrank, japvalid => 0, rawsci => $raw);
             }
         }
         close $fh;
@@ -4242,6 +4473,8 @@ sub space_digits_bytes {
     return $name;
 }
 
+# 学名ごとに、ソースが付けた rank を控えて返す。Catalogue of Life の判定が
+# 同名異物のものかどうかを見分けるのに使う (external_validity)。
 sub collect_scinames {
     my ($sources) = @_;
     my %names;
@@ -4251,15 +4484,30 @@ sub collect_scinames {
         open my $fh, '<', $path or next;
         binmode $fh;
         while (my $line = <$fh>) {
-            my $i = index($line, "\t");
-            next if $i < 1;
-            my $j = index($line, "\t", $i + 1);
-            next if $j < 0;
-            $names{ substr($line, $i + 1, $j - $i - 1) } = 1;
+            chomp $line;
+            my @f = split /\t/, $line, 7;
+            next unless @f >= 5 && length $f[1];
+            $names{ $f[1] }{ $f[4] } = 1;
         }
         close $fh;
     }
     return \%names;
+}
+
+# CoL の rank が、ソースがその学名に付けた rank のどれからも離れているか。
+# 種以下どうしの入れ替わり (種 <-> 亜種 <-> 変種 <-> 品種) は分類体系の版の違い
+# なので離れているとみなさない (「ケイトウ / Celosia argentea f. cristata」)。
+sub rank_far_from_sources {
+    my ($ranks, $colrank) = @_;
+    return 0 unless defined $colrank && ref $ranks;
+    my $far = 0;
+    for my $r (keys %$ranks) {
+        next unless $r =~ /\A[0-9]+\z/;
+        return 0 if $r >= rk('species') && $colrank >= rk('species');
+        return 0 if abs($colrank - $r) < $RANK_WORD_GAP;
+        $far = 1;
+    }
+    return $far;
 }
 
 sub external_validity {
@@ -4320,6 +4568,22 @@ sub external_validity {
                 my $nr = exists $COL_RANK{ $srank{$n} } ? rk($COL_RANK{ $srank{$n} }) : undef;
                 my $ar = exists $COL_RANK{ $a->[1] }    ? rk($COL_RANK{ $a->[1] })    : undef;
                 if (defined $nr && defined $ar && $ar < $nr) { delete $col{$n}; next }
+                # **CoL が同じ綴りの別の分類群を指していることがある** (同名異物)。
+                # CoL の「Homoptera」は蛾の属、「Blattaria」はモウズイカ属の節で、
+                # ソースの「ヨコバイ亜目」「ゴキブリ目」とは階層が8〜9段離れる。
+                # CoL の中では綴りも階層も整合しているので上の検査では落ちない。
+                # 別の分類群についての判定なのだから**判定ごと無視する**。
+                if (rank_far_from_sources($name_bytes->{$n}, $nr)) {
+                    delete $col{$n};
+                    next;
+                }
+                # ここまで来れば CoL は同じ分類群について言っている。階層を
+                # 付け替える差し替え (「Equisetopsida (綱)」->「Equisetales (目)」、
+                # 「Acidobacteria (門)」->「Terriglobia (綱)」) は、和名が
+                # 「トクサ綱」「アシドバクテリウム門」と階層を名乗っているのに
+                # 学名と食い違う組を作ってしまうので採らない。シノニムという
+                # 判定自体は正しいので有効性の上書きはそのまま残す。
+                next if rank_far_from_sources($name_bytes->{$n}, $ar);
                 $accepted{$n} = $a;
             }
         }
