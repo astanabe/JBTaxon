@@ -2131,6 +2131,26 @@ sub add_pair {
     ($rank, $subrank) = rank_from_sciname($sci)
         if $rank == rk('species')
         && $sci =~ /(?:\A| )(?:subsp|ssp|var|subvar|f|sect|nothosubsp|nothovar)\. /;
+    # 識別子の付かない「属名 sp.」は、和名によって指すものが違う。
+    #   - 和名が種より上の階層語で終わる (河川水辺の国勢調査の「フナ属 /
+    #     Carassius sp.」) → 属そのものを指している。属の学名に「sp.」は付かない
+    #     ので外し、rank は和名の階層語に合わせる
+    #   - それ以外 (魚類の「アイコバンハゼ / Gobiodon sp.」) → その属の未記載種や
+    #     未同定種を指している。rank_from_sciname は sp. を語として数えないので
+    #     属と判定するが、種にする。属のままだと和名が種より上の有効名の形
+    #     (カナ名＋階層語) を満たさず、シノニムに落ちてしまう
+    # 「spp.」は複数の種をまとめた書き方で、種1つを指さないので触らない。
+    if ($sci =~ /\A(\S+) sp\.\z/) {
+        my $taxon = $1;    # 属名とは限らない (「Psychidae sp.」)
+        if (length $head && $head =~ /($JAP_HIGH_RANK_WORD_RE)\z/) {
+            ($sci, $rank, $subrank) = ($taxon, $JAP_RANK_WORD{$1}, 1);
+        }
+        elsif ($rank < rk('species')) {
+            # 名前の形から決めた rank は語尾で推すので、「Neritina sp.」を亜族、
+            # 「Psychidae sp.」を科とする。どちらも1つの種を指しているので種にする
+            ($rank, $subrank) = (rk('species'), 1);
+        }
+    }
     # 和名の接尾辞が示す階層と rank が離れすぎているものは、和名と学名が別の
     # 分類群を指している。「アマナ属 / Amana erythronioides (種)」「アオサンゴ目 /
     # Helioporidae (科)」「アーケアメーバ下門 / Archamoebae (属)」など。
