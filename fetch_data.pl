@@ -42,6 +42,7 @@ my $SEAWEED_BASE = 'https://tonysharks.com/Seaweeds_list/';
 # Wikidata は WDQS (query.wikidata.org) だと 60 秒制限で完走しないので QLever を使う。
 # クエリは AllTaxa/wikidata.rq (リポジトリで追跡している) を POST する。
 my $QLEVER_URL   = 'https://qlever.dev/api/wikidata';
+my $GSHEET_BASE  = 'https://docs.google.com/spreadsheets/d';
 
 #-----------------------------------------------------------------------------
 # ソース定義テーブル
@@ -71,11 +72,11 @@ my @SOURCES = (
     },
     {   dir  => 'AllTaxa',
         type => 'file',
-        desc => 'Catalogue of Life (2026-08-26 XR)',
+        desc => 'Catalogue of Life (2026-09-25 XR)',
         # ChecklistBank が月次で置いている ColDP の配布ファイル。
-        # 約1.26GB あるので取得に時間がかかる。展開は generate_tables.pl の仕事。
-        files => [ [ 'https://download.checklistbank.org/col/monthly/2026-08-26_xr_coldp.zip',
-                     '2026-08-26_xr_coldp.zip' ] ],
+        # 約1.42GB あるので取得に時間がかかる。展開は generate_tables.pl の仕事。
+        files => [ [ 'https://download.checklistbank.org/col/monthly/2026-09-25_xr_coldp.zip',
+                     '2026-09-25_xr_coldp.zip' ] ],
     },
     {   dir   => 'AllTaxa',
         type  => 'sparql',
@@ -110,12 +111,45 @@ my @SOURCES = (
         count    => '365',
     },
     {   dir  => 'Insects',
-        type => 'manual',
-        desc => 'shigainsect (滋賀県昆虫目録)',
-        files  => [],
-        always => 1,
-        reason => 'shigainsect の目別 Excel (2025年版は28ファイル) を Insects/ に配置して下さい:',
-        urls   => [ 'https://sites.google.com/view/shigainsect/' ],
+        type => 'file',
+        desc => 'shigainsect (滋賀県昆虫目録2025)',
+        # https://sites.google.com/view/shigainsect/ から目ごとにリンクされている
+        # Google スプレッドシートを TSV で書き出す (先頭のシートだけが出る)。
+        # docs.google.com の robots.txt は Allow: /spreadsheet で
+        # /spreadsheets/d/<ID>/export を許可している (2026-10-15 確認)。
+        # 英名はシートの Order 列ではなく日本語の目名に合わせてここで固定する
+        # (Order 列の値は揺れる)。文献表 (「こちら」) と一括 ZIP は取らない。
+        files => [ map { [ "$GSHEET_BASE/$_->[0]/export?format=tsv",
+                           "shigainsect_$_->[1].tsv" ] } (
+            [ '1DmOiRi9qUtbi58VKimIqmCpMrIHoRz6O', 'Thysanoptera' ],              # アザミウマ目
+            [ '17Qqjgz2BvX6UKJosvsiMWvRgQ7Pu3KK2', 'Neuroptera' ],                # アミメカゲロウ目
+            [ '1Si5rX-IuU4fKo7Ny2H6fQPulAPyLiqg9', 'Archaeognatha' ],             # イシノミ目
+            [ '1MKsp3zhdKqI_ciaAUpPMLcvU98egbvS8', 'Ephemeroptera' ],             # カゲロウ目
+            [ '1vagF7BDO8EYcyDT71WlVYj5zmpv7Q3XO', 'Psocodea' ],                  # カジリムシ目
+            [ '1HQZAmBY_z2XokPRYq13MlYVsGZ5Q0kT5', 'Mantodea' ],                  # カマキリ目
+            [ '1rlE_ZeUX9YGfla2JC3vMp63NtbpxDaxj', 'Hemiptera' ],                 # カメムシ目
+            [ '16FLKdAuVe2nNziA-bwgXeUOdkMsWx76N', 'Plecoptera' ],                # カワゲラ目
+            [ '1drCi3y8t9VoEp7DL4LrHj8KWkC0E06v2', 'Notoptera' ],                 # ガロアムシ目
+            [ '1EqStwuvP29AnhJEVVD8R96SFoFXZk4Us', 'Coleoptera' ],                # コウチュウ目
+            [ '1zH_zK8EmBeoVuyOCF2J2boshnOQS5Jl-', 'Diplura' ],                   # コムシ目
+            [ '1qxfiy88VwUfPFd4rEhWPZqAbwS-Cfe76', 'Blattodea' ],                 # ゴキブリ目
+            [ '1SocRIJMHjFFSMVtZA5ubLW5xt77JGd8_', 'Zygentoma' ],                 # シミ目
+            [ '19g_wUquAN5C6lgyVSKO2LAJ8EbhyDhUt', 'Mecoptera' ],                 # シリアゲムシ目
+            [ '10BarunjO2F9GTDV3oFsksdXf0c5wHg73', 'Lepidoptera_moths' ],         # チョウ目 (ガ類)
+            [ '12F94xdi-RhkQybIi2aGsS2vowfwyUpCI', 'Lepidoptera_butterflies' ],   # チョウ目 (チョウ類)
+            [ '19Y2krFZ-LqX31ZQE0jOkeFWsyVLRpRK5', 'Trichoptera' ],               # トビケラ目
+            [ '1GX2vRdJMn2Gq1UuNIGZJLkdJdim6tQpD', 'Collembola' ],                # トビムシ目
+            [ '1MYmQZK6vkRYJJghd5S49i_pNJfkjOAaN', 'Odonata' ],                   # トンボ目
+            [ '1a7_YyeJOaxpd9gnk3gTNOyjYKdPlgVQp', 'Phasmida' ],                  # ナナフシ目
+            [ '1_hODN17yIDhHbpgcTSmDpp3wdR16ICST', 'Strepsiptera' ],              # ネジレバネ目
+            [ '10uLCSGNLZrzmf1Dr90haaCFdDwwqjluf', 'Siphonaptera' ],              # ノミ目
+            [ '1y53HcJCO6EFQttXm_vEj1zIlD9q0P1y9', 'Diptera' ],                   # ハエ目
+            [ '1dA6ppjaBbDq019xo_6tGccbS3Q67to2s', 'Dermaptera' ],                # ハサミムシ目
+            [ '1TH8LKa7AurT03JAlsuU1GKnoErGpFTVC', 'Hymenoptera' ],               # ハチ目
+            [ '1APrPZkW9rMR2EECZjks09yHH_0-zCsxZ', 'Orthoptera' ],                # バッタ目
+            [ '1Pa0UdrvxXBOl3219rsE-1OyF30kDahJi', 'Megaloptera' ],               # ヘビトンボ目
+            [ '1E60ezJ6_vYNm7YFtHbrsYNOn4kZcY_52', 'Raphidioptera' ],             # ラクダムシ目
+        ) ],
     },
     {   dir  => 'Insects',
         type => 'file',
@@ -137,9 +171,13 @@ my @SOURCES = (
     },
     {   dir  => 'Insects',
         type => 'file',
-        desc => '日本産トビケラの種リスト',
-        files => [ [ 'https://tobikera.eco.coocan.jp/names.htm',
-                     'trichoptera_names.html' ] ],
+        desc => '日本産トビケラの種名一覧',
+        # https://sites.google.com/view/tobikera/home/checklist に埋め込まれた
+        # Google スプレッドシートを TSV で書き出す。docs.google.com の robots.txt は
+        # Allow: /spreadsheet で /spreadsheets/d/<ID>/export を許可している
+        # (2026-10-15 確認)。
+        files => [ [ "$GSHEET_BASE/1x-ebm1nuZZcRrnZBAAGpvxnqRnHMrSF-PjNbssU_wqM/export?format=tsv",
+                     'trichoptera_checklist.tsv' ] ],
     },
     {   dir  => 'Insects',
         type => 'file',
@@ -574,13 +612,6 @@ sub report_manual {
     for my $src (@$manual) {
         my $dir = File::Spec->catdir($basedir, $src->{dir});
 
-        if ($src->{always}) {
-            # shigainsect はファイル名が多数かつ不定なので存在チェックはしない
-            push @lines, "[$src->{dir}] $src->{reason}";
-            push @lines, map { "  $_" } @{ $src->{urls} };
-            next;
-        }
-
         my @missing = grep { !-e File::Spec->catfile($dir, $_) } @{ $src->{files} };
         next unless @missing;
         my @shown = @missing;
@@ -630,8 +661,7 @@ sub list_sources {
             printf "  展開: %s -> %s\n", @{ $src->{untar} } if $src->{untar};
         }
         elsif ($src->{type} eq 'manual') {
-            printf "  %s\n", (@{ $src->{files} } ? join(', ', @{ $src->{files} })
-                                                 : '(ファイル名不定)');
+            printf "  %s\n", join(', ', @{ $src->{files} });
             printf "  <- %s\n", $_ for @{ $src->{urls} };
         }
         elsif ($src->{type} eq 'naro') {
@@ -671,7 +701,7 @@ sub usage {
 
 JBTaxon の生データファイルを分類群ごとのディレクトリへダウンロードします。
 全ての取得は curl で行い、ダウンロードとダウンロードの間に必ず${SLEEP_SECONDS}秒空けます
-(この間隔は変更できません)。全件取得の所要時間は約45分です。
+(この間隔は変更できません)。全件取得の所要時間は約47分です。
 
 オプション:
   --dir=PATH    出力先のベースディレクトリ (既定: スクリプトのあるディレクトリ)

@@ -31,7 +31,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 分類群ごとに1ディレクトリ（README の見出しの括弧内が英語ディレクトリ名: `Mammals`, `Reptiles_Amphibians`, `Fishes`, `Insects`, `Spiders`, `Nematodes`, `Tanaids`, `Earthworms`, `Isopods`, `VascularPlants`, `Bryophytes`, `Lichens`, `Fungi`, `Seaweeds`, `Viruses` と全生物種を対象とする「全体」）。「全体」のディレクトリ名は **`AllTaxa`** とすることが決定済み。ステップ1・2はディレクトリ単位で完結し、ステップ3・4で横断的に統合される。
 
-`Insects` はサブディレクトリを作らず**フラットに配置する**。NARO・List-MJ・ハネカクシ・有剣膜翅類・トビケラ・蝶類・shigainsect が同一ディレクトリに同居するため、**`fetch_data.pl` が付けるファイル名がそのままソース識別子を兼ねる契約**になっている（`naro_insecta_pageNNN.html` / `ListMJ3-*.xlsx` / `staphylinidae_p069.pdf` / `aculeata_hym_list_2016_ver5.pdf` / `trichoptera_names.html` / `butterfly_*.html`）。`generate_tables.pl` はこのファイル名でパーサを振り分けるので、命名を安易に変えないこと。
+`Insects` はサブディレクトリを作らず**フラットに配置する**。NARO・List-MJ・ハネカクシ・有剣膜翅類・トビケラ・蝶類・shigainsect が同一ディレクトリに同居するため、**`fetch_data.pl` が付けるファイル名がそのままソース識別子を兼ねる契約**になっている（`naro_insecta_pageNNN.html` / `ListMJ3-*.xlsx` / `staphylinidae_p069.pdf` / `aculeata_hym_list_2016_ver5.pdf` / `trichoptera_checklist.tsv` / `butterfly_*.html` / `shigainsect_<目の英名>.tsv`）。`generate_tables.pl` はこのファイル名でパーサを振り分けるので、命名を安易に変えないこと。
 
 ダニ類 (`Acarids`) は情報源の「データの無断転用・無断転載は固くお断りいたします」という記述の意味が不明瞭なため、**対象外**とすることが決定済み。README からも節が削除されている。再追加しないこと。
 
@@ -46,14 +46,14 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 以下は `fetch_data.pl` の対象外で、ユーザーが手動でディレクトリに配置する前提：
 
 - 哺乳類 (`Mammals`) — 利用規約への同意が必要。ゲート自体は Vue.js のクライアントサイド判定のみで技術的には取得可能だが、**規約遵守上の判断として手動配置とする**。規約は再配布と改変物の出版を禁止しているが、同意してダウンロードした本人が加工して自分で使うことは禁じておらず、加工プログラムしか含まない JBTaxon とは衝突しない。
-- 昆虫 (`Insects`) のうち shigainsect のExcel — Google Sheets の export API では技術的に取得できてしまうが、`docs.google.com` の robots.txt が `User-agent: * / Disallow: /` のため**自動取得が禁止されている**。この理由で手動配置とする。
 - コケ植物 (`Bryophytes`) の PDF — `www.jstage.jst.go.jp` の robots.txt が `Disallow: /*_pdf` で、取得先 `.../_pdf/-char/ja` が該当するため**自動取得が禁止されている**。この理由で手動配置とする。
 
 **手動配置ファイルの実際の名前と zip の扱い**（README のコミット `ad24468` で明文化された）:
 
 - 哺乳類 — 配布されている `list_20211223.zip` をそのまま `Mammals/` に置く。中身は `list_20211223/` 配下の `list_20211223.pdf` と `list_20211223.xlsx`。
-- shigainsect — 一括ダウンロードの zip でも、目ごとの xlsx でもどちらでもよい。2025年版は28ファイル（`アザミウマ目2025.xlsx` 〜 `ラクダムシ目2025.xlsx`）。ファイル名が年版で変わるため `fetch_data.pl` は存在チェックをせず、案内を常時表示する。
 - コケ植物 — J-STAGE が付けるファイル名のまま `7_9.pdf` / `9_53.pdf` として置く。`fetch_data.pl` の未配置チェックもこの名前を見る。
+
+shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（当時の `docs.google.com` の robots.txt が `Disallow: /` だったため）が、現在は `Allow: /spreadsheet` で export が許可されているので自動取得に切り替えた（下記 robots.txt の節）。
 
 **zip の展開は `generate_tables.pl` の仕事**であり、`fetch_data.pl` では展開しない。手動配置は `fetch_data.pl` の実行後に行われるので、展開を `fetch_data.pl` に置くとファイルを置いた後にもう一度実行させることになるため。
 
@@ -69,18 +69,18 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 - 既存ファイルはスキップし、`--force` で再取得する。**スキップ時は sleep しない**（ネットワークアクセスが発生していないため。中断後の再開が数秒で済む）。
 - `.part` に落として成功時のみ `rename` する。中断で切り詰められたファイルが残り、スキップ判定で「取得済み」と誤認される事故を防ぐため。スキップ方式を採る以上これは必須。
 - 巡回系（NARO・海藻）は、**レスポンスではなくディスク上のファイルを読んで**次に辿る URL を決める。再開時にスキップされたページの内容はレスポンスとして手元に来ないため。
-- 失敗しても即座に中断せず最後まで走り切り、失敗一覧を末尾に再掲する（約510件・45分の処理で1件の失敗のために全体をやり直すのは非現実的なため）。ダウンロード失敗が1件でもあれば exit 1、手動未配置は警告のみで exit 0。
+- 失敗しても即座に中断せず最後まで走り切り、失敗一覧を末尾に再掲する（約540件・47分の処理で1件の失敗のために全体をやり直すのは非現実的なため）。ダウンロード失敗が1件でもあれば exit 1、手動未配置は警告のみで exit 0。
 - ソース定義は `@SOURCES` の1テーブルに宣言的にまとめてある。URL 固定方針の保守がこのテーブルの編集だけで完結するのが狙い。`type` は `file` / `naro` / `seaweed` / `sparql` / `manual` の5種。
 - `file` には `untar` を添えられる。`[書庫名, 展開後に存在するはずのファイル]` を書くと取得直後に `tar` で展開する。**書庫の展開を `fetch_data.pl` が行うのは NCBI taxdump だけ**。手動配置分の zip は `fetch_data.pl` の実行後に置かれるので `generate_tables.pl` の仕事だが、これは自分でダウンロードした書庫なので取得直後に展開してよい。
 - `sparql` は `AllTaxa/wikidata.rq` を QLever (`https://qlever.dev/api/wikidata`) へ POST して CSV を受け取る種別。**追加の curl オプションは `fetch()` の `extra` 引数で渡す**（`fetch()` 以外で curl を呼ばない規則を守るため）。`Accept: text/csv` を付けないと `"大腸菌"@ja` のような RDF 項形式で返る。WDQS (query.wikidata.org) は60秒制限で完走しない。
 - CLI: `--dir` / `--only`（複数指定可）/ `--force` / `--list` / `--dry-run` / `--help`。`--list` と `--dry-run` は通信しない。
 - `manual` 種別は一切ダウンロードせず、期待パスの存在を確認して未配置のものを実行末尾にまとめて案内する。
-- 全件取得は約510ダウンロード・約45分。実測は 44分46秒（取得491 / スキップ17）。
+- 全件取得は約540ダウンロード・約47分。shigainsect を自動取得にする前の実測は 44分46秒（取得491 / スキップ17）で、これに TSV 28件が加わった。
 - **`Seaweeds/Red/Erythropeltidales.html` は情報源側のリンク切れ（HTTP 404）で恒久的に取得できない。** トップページから2箇所リンクされているがサーバ上に実体がない。このため全件取得の終了コードは常に 1 になる。URL の除外をハードコードはしていない。
 
 ### generate_tables.pl の実装契約
 
-実装済み。実行は約4分20秒・ピーク RSS 約630MB（全27ソース、中間レコード 288,899件、最終出力 435,611行）。以下は変更してはならない約束事：
+実装済み。実行は約4分50秒・ピーク RSS 約630MB（全27ソース、中間レコード 289,805件、最終出力 436,673行。CoL 2026-09-25 XR で計測）。以下は変更してはならない約束事：
 
 - **非コアモジュールを使う。** `HTML::TreeBuilder` / `HTML::TableExtract` / `Text::CSV` / `Encode::JIS2K` の4つと、外部コマンド `pdftotext` (poppler-utils + poppler-data)。起動時に `check_dependencies()` が不足を検出し、apt / cpanm の案内を出して exit 2 する。これ以上増やさないこと。
 - **xlsx の `_x000D_` のようなエスケープは落とす**（`strip_xlsx_escapes`）。xlsx は制御文字をこの形で書くが、実データでは実際の改行と併記されていて（`フチトリコメツキダ_x000D_\r\nマシ属`）、そのまま読むと文字列が名前に残る。`_x005F_` でエスケープされた下線は元に戻す。
@@ -156,7 +156,7 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 #### ソース別の実装で外せない点
 
 - **NARO** — `<a>` 単位でパースしない（アンカー境界が分類群境界とずれる）。セル HTML から `</?a…>` を除去し `<br>` で行分割して、`└` 行を新しい分類群の開始、`(…)` 行をその和名として読む。重複排除は `categorySelect('ID','4')` の **ID**（学名と和名の組では別属の同名種小名が潰れる）。種の列は種小名だけなので属の列と連結して二名法にする。`└` の字下げは深さを表さないので、rank は和名の接尾辞（`%NARO_JAP_SUFFIX`）→ 学名の語尾 → 列の基底 rank に `subrank=2`、の順で決める。`syn : ` 前置は `scivalid=0`。
-- **shigainsect** — `ガロアムシ目2025.xlsx` だけヘッダの `種名（学名）` と `種名（和名）` が入れ替わっている（データの並びは他と同じ）。ヘッダで2列を特定したうえで、**毎行その内容がラテン文字か日本語かで振り分ける**。`亜目名` が `亜目` になっているファイルもある。
+- **shigainsect** — 目ごとの Google スプレッドシートを `export?format=tsv` で取得した `shigainsect_<目の英名>.tsv` を `read_tsv` で読む（書き出されるのは先頭のシートで、xlsx 時代に読んでいたシートと同じ）。英名は日本語の目名に合わせて `fetch_data.pl` で固定しており、シートの `Order` 列（値が揺れる）は使わない。ガロアムシ目（`shigainsect_Notoptera.tsv`）だけヘッダの `種名（学名）` と `種名（和名）` が入れ替わっている（データの並びは他と同じ）。ヘッダで2列を特定したうえで、**毎行その内容がラテン文字か日本語かで振り分ける**。`亜目名` が `亜目` になっているファイルもある。
 - **PDF** — CJK の行折り返しは**空白なしで連結**する（`fold_pdf_lines`）。左マージンはページの偶奇で変わるので**字下げの絶対値を使わない**。レコードの開始行かどうかは行頭のキーワードや大文字/小文字で判定する。
 - **注記の除去は括弧内シノニムの切り出しより先に行う**（`strip_japnotes`）。順序を逆にすると `（和名新称）` や `(新称)` そのものが和名シノニムとして出力に混ざる。括弧の中で別名と注記がカンマ区切りで並ぶ行（`エゾホウオウゴケ (チョウセイホウオウゴケ，新称)`）もあるので、`is_placeholder` が注記語そのものの和名も弾く。
 - **`japanese_run` は半角括弧で連なりが切れる。** 行末に `和名 (別名)` の形で和名が置かれる情報源（Hattoria の2件）では代表の和名を落としてしまうので、最初の日本語文字から行末までをまとめて取る `japanese_tail` を使う。
@@ -193,7 +193,7 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
   - **参照データ側の正規化が必須。** Catalogue of Life の名前の列に `Candidatus` は現れない（3GB 中43行に出てくるが、どれも別の列）が、**NCBI Taxonomy は `Candidatus Carsonella ruddii` を `scientific name`、`Carsonella ruddii` を `equivalent name` として両方持っている**ので、片側だけ外すと突き合わせが外れる。
   - 外すことで NCBI 側の22件が新たにこちらの学名に当たるようになるが（`Bathyarchaeota` `Korarchaeum cryptofilum` `Melainabacteria` など。`Candidatus Limicola` が鳥の属 `Limicola` と衝突する同名異物も含む）、**いずれもソース間の判定が一致しているので NCBI を引く条件に入らず、出力は変わらない**。`%ncbi` は同じ名前に複数の class が当たるとき有効名を優先するので、衝突しても有効名の判定が勝つ。
 - **`norm_sciname` は接続語の直後だけ識別子を許す。** `sp. 1` / `subsp. 2` / `sp. L` / `sp. 'yamato'` を残しつつ、著者名を種小名と取り違えないため。`sensu` `auct.` `non` `nec` `complex` `group` `Type` `of` は名前の一部ではないのでそこで打ち切る。
-- **Catalogue of Life** — `2026-08-26_xr_coldp.zip` から展開した `NameUsage.tsv`（約3GB）と `VernacularName.tsv` を突き合わせる。巨大なので **`:encoding(UTF-8)` を通さずバイト列で行を読み、1列目の ID が必要な集合にある行だけ split して該当フィールドを decode する**。シノニムの有効名は `col:parentID` の先にあるので2周する。`language` が `jpn` の和名は 99,738件（GBIF Backbone Taxonomy の 27,558件の上位互換）。ローマ字表記の和名は `is_placeholder` が日本語文字を含まない名前として落とす（意図した挙動）。
+- **Catalogue of Life** — `2026-09-25_xr_coldp.zip` から展開した `NameUsage.tsv`（約3GB）と `VernacularName.tsv` を突き合わせる。巨大なので **`:encoding(UTF-8)` を通さずバイト列で行を読み、1列目の ID が必要な集合にある行だけ split して該当フィールドを decode する**。シノニムの有効名は `col:parentID` の先にあるので2周する。`language` が `jpn` の和名は 100,374件（2026-09-25 XR。GBIF Backbone Taxonomy の 27,558件の上位互換）。ローマ字表記の和名は `is_placeholder` が日本語文字を含まない名前として落とす（意図した挙動）。
   - 書庫は展開すると 5.6GB・21,425 ファイルになるので、**`unzip_only` で使う2ファイルだけを展開する**。提供元のメタデータ `source/<ID>.yaml` は展開せず、必要なものだけを書庫の1回のストリーム走査で読む。
   - **エントリごとの `sourceID` から出典を作る**（README の規定）。`source/<ID>.yaml` の `title` / `author`→`editor`→`creator`→`contact` / `url` を使い、人名が無いデータベースは団体名、それも無ければ表題を著者に使う。YAML の完全な解釈はしないが、`title` は複数行の二重引用符付きスカラで書かれることがあるのでそこだけは畳む。
 - **Wikidata** — `ranks_ja`（種・属・科…）から rank を決める。有効名／シノニムの情報を持たないので学名は常に有効名。
@@ -226,15 +226,16 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
   - カテゴリID: Insecta=`BB00000004`(10,931件) / Araneae=`BB00006378`(255件) / Nematoda=`BB00011689`(633件)。`search/basic` なら計約400ページ、ツリー巡回なら約4,700リクエスト。robots.txt は全面許可。
   - **`fetch_data.pl` は `search/basic` のみを使用することが決定済み**（計396ページ・約33分。`tree.json` 巡回は約4,700リクエスト＝5秒間隔では約7時間かかるため採らない）。rank が列位置から明示的に取れる利点もある。
   - 和名の表記揺れがある: 和名欄に学名が入る (`Setodes (Setodes属)`)、全角スペース混入 (`Eubasilissa (ムラサキトビケラ 属)`)、末尾の余分なスペース。
-  - NARO のトビケラ目は14ノードしかなく、専用ソース (tobikera.eco.coocan.jp) の方が遥かに充実している。「より狭い分類群のソースを優先」が効く場面。
+  - NARO のトビケラ目は14ノードしかなく、専用ソース（日本トビケラ情報ネットワーク「日本産トビケラの種名一覧」）の方が遥かに充実している。「より狭い分類群のソースを優先」が効く場面。
 - **海藻** — `Seaweed_list_top.html` は更新履歴のポータル。実データは `Brown/*.html`, `Red/*.html`, `Green/*.html` の分類群別ページに分散。
 - **日本産蝶類の学名リスト** — 2026年公開の Wix サイト。科ごとに1ページ（計5ページ）で、本文はサーバ側で描画されているので HTML から読める。1レコードが1つの `<p class="font_N">`、学名だけが `font-style:italic` の span に入る。亜種の行は種小名しかないので直前の種に連結する。詳細は `Insects/README.md`。
 - **List-MJ** — トップはフレームセット。Excel は `about.html` 内にリンクがある（`dl/ListMJ3-*.xlsx`）。
 
 その他の注意:
 
-- **文字コード**: トビケラは UTF-8（`.html` の見た目から Shift_JIS を想定すると化ける）。河川水辺の国勢調査のページ自体は cp932。
-- **トビケラは属名が頭文字省略形**（`C. aira`）で書かれており、直前の属名行を保持して展開する必要がある。
+- **文字コード**: 河川水辺の国勢調査のページ自体は cp932。
+- **トビケラ**は日本トビケラ情報ネットワーク「日本産トビケラの種名一覧」（Google Sites に埋め込まれた Google スプレッドシート。`export?format=tsv` で取得する）。旧情報源の野崎「日本産トビケラの種リスト」(`tobikera.eco.coocan.jp/names.htm`) から差し替えた。空の列による字下げが階層を表し（1列目=亜目、2列目=科、3列目=属、4列目=種の学名、5列目=種の和名）、4列目が `種名` の行は見出し。**属名が頭文字省略形**（`C. aira`）で書かれており、直前の属名行を保持して展開する必要がある。
+- **Google スプレッドシートの TSV 書き出し**（トビケラ・shigainsect）は先頭のシートだけが出る。引用符は使われず、結合セルとセル内の改行は無い。
 - **YList** は Excel 版 (`20210514YList_download.xlsx`) が正本。同じ内容のタブ区切りテキスト (`_tab.txt`) も配布されているが**使用しない**。
 - **FernGreenList** の CSV は `Japanese name 和名` と `Synonym of Japanese name 和名異名` の列を持ち、和名シノニムをそのまま利用できる。
 - ライセンスが明確なもの: List-MJ と FernGreenList は **CC0**、地衣類は **CC BY 4.0**。
@@ -246,7 +247,6 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 **robots.txt により自動取得が禁止されているもの**（いずれも手動配置で対応済み。自動化しないこと）:
 
 - **コケ植物 (Hattoria / J-STAGE)** — `www.jstage.jst.go.jp/robots.txt` が `User-agent: * / Disallow: /*_pdf`。取得先 `.../7_9/_pdf/-char/ja` が該当する。
-- **昆虫 shigainsect** — `docs.google.com/robots.txt` が `Disallow: /`。
 
 **規約により対象外としたもの:**
 
@@ -271,7 +271,8 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 - 地衣類 — CC BY 4.0
 - FernGreenList — CC0。`ndownloader.figshare.com` に robots.txt なし
 - YList — robots.txt なし。「右クリックで保存してお使い下さい」と明示。引用形式の指定あり
-- タナイス類・トビケラ・ワラジムシ・海藻・真菌 — robots.txt に制限なし、利用条件の記載もなし
+- タナイス類・ワラジムシ・海藻・真菌 — robots.txt に制限なし、利用条件の記載もなし
+- トビケラ・昆虫 shigainsect（Google スプレッドシート）— `docs.google.com/robots.txt` は `Allow: /spreadsheet` で `/spreadsheets/d/<ID>/export` を許可している（2026-10-15 確認）。かつては `User-agent: * / Disallow: /` で、shigainsect を手動配置にしていた理由だった。robots.txt が再び禁止に戻ったら手動配置に戻すこと
 
 **出典明記が求められるソース**: 魚類、YList、地衣類 (CC BY)、哺乳類。成果物に出典・引用表記を含める仕組みが必要。
 
@@ -312,6 +313,13 @@ Excel (.xlsx)、CSV、タブ区切りテキスト、PDF、HTML ページその�
 - `<分類群>/sciname2japname_VERSION_BUILDDATE.tsv` — `sciname / japname / scivalid / rank / subrank / sourcetitle / sourceauthor / sourceurl`。学名シノニムがある場合、同一 japname に対し sciname が異なる行が複数生じる。japname 側にシノニムは使わない。
 
 `japvalid` / `scivalid` は1列目の名前が有効名かどうかのフラグ（0 = invalid, 1 = valid）で、シノニムなら 0。**2列目の名前側にはシノニムが現れない設計なので、このフラグは常に1列目に対応する**。位置は rank/subrank の手前（3列目）。`sourcetitle` / `sourceauthor` / `sourceurl` は採用したソースのもの（Catalogue of Life だけはエントリごとの提供元）で、**著者が3名以上なら2人目以降を省略し、日本語なら「～ら」、英語なら「～ et al.」とする**。そのため `@SOURCES` の `sourceauthor` は文字列ではなく著者名の配列で持ち、出力時に `format_authors()` で整形する。**ライセンス上は出典明記が不要なソース（CC0 など）も含め全ソースで3列とも必ず埋める**。出典明記が求められる情報源（魚類・YList・地衣類・哺乳類）の要求もこれで満たされる。値は `generate_tables.pl` の `@SOURCES` が唯一の持ち場で、原典やページに著者の記載があればその表記に従い、記載がなければ発行主体（学会・機関）を書く。
+
+**`sourcetitle` の末尾には版を ` (…)` で付ける**（半角括弧、前に半角空白）。`@SOURCES` の `edition` キーで指定し、`display_title()` が組み立てる。
+
+- 旧版も最新版も固定 URL があるもの → 版の名前（`日本産魚類全種目録 (2026年8月27日版)` `Catalogue of Life (2026-09-25 XR)`）。CoL の提供元ごとの表題には `(Catalogue of Life 2026-09-25 XR)` を付ける（`parse_col`。iNaturalist の判定は版を付ける前の表題で行う）。
+- DOI があるもの、Web Archive の特定の日のスナップショット → 何も付けない（`edition` を書かない）。ハネカクシ・有剣膜翅類・FernGreenList・Hattoria 2件。
+- それ以外（継続更新のサイト） → `edition => 'accessed'` で `(Accessed on YYYY-MM-DD)`。日付は入力ファイルの mtime の最大値をローカル時刻の日付にしたもの（`fetch_data.pl` の curl は `--remote-time` を付けないので mtime がそのまま取得日になる）。入力ファイルが無ければ何も付けない。
+- 出典の表記は `merge.fp` の指紋に入るので、版や取得日が変われば統合をやり直す。
 
 **一意なのは1列目と2列目の組**。1列目だけでは一意にならない——同じ和名が別の学名を指す行も、同じ学名が別の和名を持つ行も、どちらも残す（README の規定）。統合の衝突解決（狭さ→新しさ→定義順）は、**同じ組を複数のソースが持つときに出典3列をどれにするかを決める**役割になる。
 

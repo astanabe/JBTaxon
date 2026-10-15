@@ -264,6 +264,11 @@ my @ALLTAXA_LEVELS = (
 #                  ライセンス上は出典明記が不要なソース (CC0 など) も含め、
 #                  **全ソースで3列とも必ず埋める**。原典やページに著者の記載が
 #                  あればその表記に従い、記載がなければ発行主体 (学会・機関) を書く。
+# edition      ... sourcetitle の末尾に「 (…)」で付ける版の表記 (display_title)。
+#                  旧版も最新版も固定 URL があるものは版の名前を書く。
+#                  'accessed' なら入力ファイルの更新時刻 (= 取得日) から
+#                  「Accessed on YYYY-MM-DD」を作る。DOI があるものと Web Archive の
+#                  特定の日のスナップショットは省略する (何も付けない)。
 # unzip        ... [zip, 展開後に存在するはずのファイル] 。パース前に展開する
 # optional     ... 1 なら入力が無くても失敗として数えない
 #-----------------------------------------------------------------------------
@@ -272,28 +277,31 @@ my @SOURCES = (
         desc  => '河川水辺の国勢調査のための生物リスト (R01〜R07)',
         files => [ map { "R0${_}zenseibutsu.xlsx" } 1 .. 7 ],
         scope => 0, year => 2025,
+        edition => '令和元年度〜令和7年度版',
         sourcetitle  => '河川水辺の国勢調査のための生物リスト',
         sourceauthor => [ '国土交通省 国土技術政策総合研究所' ],
         sourceurl    => 'https://www.nilim.go.jp/lab/fbg/ksnkankyo/mizukokuweb/system/seibutsuListfile.htm',
     },
     {   dir => 'AllTaxa', id => 'col', parser => 'col',
-        desc  => 'Catalogue of Life (2026-08-26 XR)',
+        desc  => 'Catalogue of Life (2026-09-25 XR)',
         files => [ 'NameUsage.tsv', 'VernacularName.tsv' ],
         # ColDP の書庫は 5.6GB・21,425 ファイルある。必要な2つだけ展開し、
         # source/*.yaml は書庫から直接読む。
-        unzip => [ '2026-08-26_xr_coldp.zip', 'NameUsage.tsv' ],
+        unzip => [ '2026-09-25_xr_coldp.zip', 'NameUsage.tsv' ],
         unzip_only => [ 'NameUsage.tsv', 'VernacularName.tsv' ],
         scope => 0, year => 2026,
+        edition => '2026-09-25 XR',
         sourcetitle  => 'Catalogue of Life',
         # metadata.yaml の creator は50名以上いる。format_authors が3名以上を
         # 「先頭 et al.」に畳むので、先頭3名だけを持てば README の表記と一致する。
         sourceauthor => [ 'Olaf Bánki', 'Yury Roskov', 'Markus Döring' ],
-        sourceurl    => 'https://download.checklistbank.org/col/monthly/2026-08-26_xr_coldp.zip',
+        sourceurl    => 'https://download.checklistbank.org/col/monthly/2026-09-25_xr_coldp.zip',
     },
     {   dir => 'AllTaxa', id => 'wikidata', parser => 'wikidata',
         desc  => 'Wikidata 学名・和名対応 (QLever で取得した CSV)',
         files => [ 'wikidata.csv' ],
         scope => 0, year => 2026,
+        edition => 'accessed',
         sourcetitle  => 'Wikidata',
         sourceauthor => [ 'Wikidata contributors' ],
         sourceurl    => 'https://www.wikidata.org/',
@@ -303,6 +311,7 @@ my @SOURCES = (
         files => [ 'list_20211223/list_20211223.xlsx' ],
         unzip => [ 'list_20211223.zip', 'list_20211223/list_20211223.xlsx' ],
         scope => 8, year => 2021,
+        edition => '20211223版',
         sourcetitle  => '世界哺乳類標準和名リスト',
         sourceauthor => [ '川田 伸一郎', '岩佐 真宏', '福井 大', '新宅 勇太', '天野 雅男', '下稲葉 さやか', '樽 創', '姉崎 智子', '鈴木 聡', '押田 龍夫', '横畑 泰志' ],
         sourceurl    => 'https://www.mammalogy.jp/list/index.html',
@@ -311,6 +320,7 @@ my @SOURCES = (
         desc  => '日本産爬虫両生類標準和名リスト',
         files => [ 'index_j.html' ],
         scope => 8, year => 2026,
+        edition => 'accessed',
         sourcetitle  => '日本産爬虫両生類標準和名リスト',
         sourceauthor => [ '日本爬虫両棲類学会' ],
         sourceurl    => 'https://herpetology.jp/wamei/index_j.php',
@@ -319,6 +329,7 @@ my @SOURCES = (
         desc  => '日本産魚類全種目録 (JAF List)',
         files => [ '20260827_JAFList.xlsx' ],
         scope => 8, year => 2026,
+        edition => '2026年8月27日版',
         sourcetitle  => '日本産魚類全種目録',
         sourceauthor => [ '本村 浩之' ],
         sourceurl    => 'https://www.museum.kagoshima-u.ac.jp/staff/motomura/jaf.html',
@@ -327,16 +338,16 @@ my @SOURCES = (
         desc  => '昆虫情報データベース (Insecta)',
         files => [ 'naro_insecta_page*.html' ],
         scope => 8, year => 2026,
+        edition => 'accessed',
         sourcetitle  => '昆虫情報データベース',
         sourceauthor => [ '国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット' ],
         sourceurl    => 'https://insect-web.rad.naro.go.jp/flame/tree',
     },
     {   dir => 'Insects', id => 'shigainsect', parser => 'shigainsect',
-        desc  => '滋賀県昆虫目録2025 (目別 Excel)',
-        files => [ '*目*.xlsx' ],
-        unzip => [ '*.zip', '*目*.xlsx' ],
-        optional => 1,
+        desc  => '滋賀県昆虫目録2025 (目別 TSV)',
+        files => [ 'shigainsect_*.tsv' ],
         scope => 8, year => 2025,
+        edition => 'accessed',
         sourcetitle  => '滋賀県昆虫目録2025',
         sourceauthor => [ '滋賀県昆虫目録作成グループ' ],
         sourceurl    => 'https://sites.google.com/view/shigainsect/',
@@ -345,6 +356,7 @@ my @SOURCES = (
         desc  => 'List-MJ 日本産蛾類総目録',
         files => [ 'ListMJ3-*.xlsx' ],
         scope => 14, year => 2021,
+        edition => '2021.6.3版',
         sourcetitle  => 'List-MJ 日本産蛾類総目録',
         sourceauthor => [ '神保 宇嗣' ],
         sourceurl    => 'http://listmj.mothprog.com/',
@@ -353,17 +365,19 @@ my @SOURCES = (
         desc  => '日本産蝶類の学名リスト (科別5ページ)',
         files => [ 'butterfly_*.html' ],
         scope => 18, year => 2026,
+        edition => 'accessed',
         sourcetitle  => '日本産蝶類の学名リスト',
         sourceauthor => [ '長田 庸平' ],
         sourceurl    => 'https://japanesebutterfly.wixsite.com/butterfly-list',
     },
     {   dir => 'Insects', id => 'trichoptera', parser => 'trichoptera',
-        desc  => '日本産トビケラの種リスト',
-        files => [ 'trichoptera_names.html' ],
+        desc  => '日本産トビケラの種名一覧',
+        files => [ 'trichoptera_checklist.tsv' ],
         scope => 14, year => 2026,
-        sourcetitle  => '日本産トビケラの種リスト',
-        sourceauthor => [ '野崎 隆夫' ],
-        sourceurl    => 'https://tobikera.eco.coocan.jp/names.htm',
+        edition => 'accessed',
+        sourcetitle  => '日本産トビケラの種名一覧',
+        sourceauthor => [ '日本トビケラ情報ネットワーク' ],
+        sourceurl    => 'https://sites.google.com/view/tobikera/home/checklist',
     },
     {   dir => 'Insects', id => 'staphylinidae', parser => 'staphylinidae',
         desc  => '日本産ハネカクシ科総目録',
@@ -385,6 +399,7 @@ my @SOURCES = (
         desc  => '昆虫情報データベース (Araneae)',
         files => [ 'naro_araneae_page*.html' ],
         scope => 14, year => 2026,
+        edition => 'accessed',
         sourcetitle  => '昆虫情報データベース',
         sourceauthor => [ '国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット' ],
         sourceurl    => 'https://insect-web.rad.naro.go.jp/flame/tree',
@@ -393,6 +408,7 @@ my @SOURCES = (
         desc  => '昆虫情報データベース (Nematoda)',
         files => [ 'naro_nematoda_page*.html' ],
         scope => 5, year => 2026,
+        edition => 'accessed',
         sourcetitle  => '昆虫情報データベース',
         sourceauthor => [ '国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット' ],
         sourceurl    => 'https://insect-web.rad.naro.go.jp/flame/tree',
@@ -401,6 +417,7 @@ my @SOURCES = (
         desc  => '日本近海産タナイス類リスト',
         files => [ 'jpnlist.html' ],
         scope => 14, year => 2026,
+        edition => 'accessed',
         sourcetitle  => '日本近海産タナイス類リスト',
         sourceauthor => [ '角井 敬知' ],
         sourceurl    => 'https://sites.google.com/site/tnidjpn/tanaidacea/jpnlist',
@@ -409,6 +426,7 @@ my @SOURCES = (
         desc  => '日本産大型陸棲ミミズの種名一覧',
         files => [ 'nihonsan_mimizu_list.xlsx' ],
         scope => 14, year => 2025,
+        edition => 'accessed',
         sourcetitle  => '日本産大型陸棲ミミズの種名一覧',
         sourceauthor => [ '南谷 幸雄' ],
         sourceurl    => 'https://japanese-mimizu.jimdofree.com/%E3%83%9F%E3%83%9F%E3%82%BA%E3%81%AE%E5%88%86%E9%A1%9E/',
@@ -417,6 +435,7 @@ my @SOURCES = (
         desc  => '日本産ワラジムシ亜目種リスト',
         files => [ 'List_species.html' ],
         scope => 15, year => 2026,
+        edition => 'accessed',
         sourcetitle  => '日本産ワラジムシ亜目種リスト',
         sourceauthor => [ '唐沢 重考' ],
         sourceurl    => 'https://www.warajimushi.com/Species/List_species.html',
@@ -425,6 +444,7 @@ my @SOURCES = (
         desc  => 'YList 植物和名-学名インデックス',
         files => [ '20210514YList_download.xlsx' ],
         scope => 6, year => 2021,
+        edition => 'accessed',
         sourcetitle  => 'YList',
         sourceauthor => [ '米倉 浩司', '梶田 忠' ],
         sourceurl    => 'http://ylist.info/',
@@ -457,6 +477,7 @@ my @SOURCES = (
         desc  => '日本産地衣類チェックリスト',
         files => [ 'checklist.html' ],
         scope => 8, year => 2026,
+        edition => 'accessed',
         sourcetitle  => 'Checklist of Lichens and Allied Fungi of Japan',
         sourceauthor => [ 'Lichenological Society of Japan' ],
         sourceurl    => 'https://lichenjapan.jp/checklist/',
@@ -465,6 +486,7 @@ my @SOURCES = (
         desc  => '日本産地衣類・関連菌類の高次分類群',
         files => [ 'systematics.html' ],
         scope => 8, year => 2026,
+        edition => 'accessed',
         sourcetitle  => 'Classification of higher taxonomic groups of lichens and allied fungi in Japan',
         sourceauthor => [ 'Lichenological Society of Japan' ],
         sourceurl    => 'https://lichenjapan.jp/systematics/',
@@ -473,6 +495,7 @@ my @SOURCES = (
         desc  => '日本産菌類チェックリスト',
         files => [ 'DB20200311.xlsx' ],
         scope => 2, year => 2020,
+        edition => 'accessed',
         sourcetitle  => '日本産菌類チェックリスト',
         sourceauthor => [ '日本菌学会 データベース委員会' ],
         sourceurl    => 'https://www.mycology-jp.org/html/checklist_clist.html',
@@ -481,6 +504,7 @@ my @SOURCES = (
         desc  => '日本産海藻リスト',
         files => [ 'Brown/*.html', 'Red/*.html', 'Green/*.html' ],
         scope => 4, year => 2026,
+        edition => 'accessed',
         sourcetitle  => '日本産海藻リスト',
         sourceauthor => [ '鈴木 雅大' ],
         sourceurl    => 'https://tonysharks.com/Seaweeds_list/Seaweed_list_top.html',
@@ -489,6 +513,7 @@ my @SOURCES = (
         desc  => 'ウイルス種名・英名・和名対応リスト',
         files => [ 'news241125.xlsx', 'news2411252.xlsx' ],
         scope => 1, year => 2024,
+        edition => 'accessed',
         sourcetitle  => 'ウイルス種名・英名・和名対応リスト',
         sourceauthor => [ '日本ウイルス学会' ],
         sourceurl    => 'https://jsv.umin.jp/news/news241125.html',
@@ -925,6 +950,8 @@ sub merge_fingerprint {
     for my $h (@$have) {
         my @st = stat $h->{path};
         push @parts, join(':', $h->{src}{id}, (@st ? ($st[7], $st[9]) : ('', '')));
+        # 出典の表記 (版・取得日) が変われば最終 TSV の6列目が変わる
+        push @parts, display_title($h->{src});
     }
     for my $ref (File::Spec->catfile($basedir, 'AllTaxa', 'NameUsage.tsv'),
                  File::Spec->catfile($basedir, 'NCBITaxonomy', 'names.dmp')) {
@@ -1000,7 +1027,7 @@ sub write_final {
         my $v = $validity->{"$vprefix\t$first"};
         my $valid = $v ? $v->[0] : 1;
         # レコード単位の出典があればそれを使う (Catalogue of Life の sourceID 由来)
-        my $title  = length $c->{st} ? $c->{st} : $c->{src}{sourcetitle};
+        my $title  = length $c->{st} ? $c->{st} : display_title($c->{src});
         my $author = length $c->{sa} ? $c->{sa} : format_authors($c->{src}{sourceauthor});
         my $url    = length $c->{su} ? $c->{su} : $c->{src}{sourceurl};
         print $fh join("\t", $first, $other, $valid, $c->{rank}, $c->{subrank},
@@ -1056,6 +1083,29 @@ sub format_authors {
     return join($jp ? '・' : ', ', @a);
 }
 
+# 最終 TSV の6列目に出す表題。sourcetitle の末尾に edition を「 (…)」で付ける。
+# 'accessed' は入力ファイルの更新時刻の最大値を取得日とする (fetch_data.pl の
+# curl は --remote-time を付けないので、更新時刻がそのまま取得日になる)。
+# 入力ファイルが無ければ日付を決められないので何も付けない。
+my %display_title;
+sub display_title {
+    my ($src) = @_;
+    return $display_title{ $src->{id} } if exists $display_title{ $src->{id} };
+    my $ed = $src->{edition};
+    return $src->{sourcetitle} unless defined $ed && length $ed;
+    if ($ed eq 'accessed') {
+        my $dir = File::Spec->catdir($basedir, $src->{dir});
+        my $mtime;
+        for my $p (resolve_files($src, $dir)) {
+            my $m = (stat $p)[9];
+            $mtime = $m if defined $m && (!defined $mtime || $m > $mtime);
+        }
+        return $src->{sourcetitle} unless defined $mtime;
+        $ed = 'Accessed on ' . strftime('%Y-%m-%d', localtime $mtime);
+    }
+    return $display_title{ $src->{id} } = "$src->{sourcetitle} ($ed)";
+}
+
 sub list_sources {
     my ($sources) = @_;
     printf "対象ディレクトリ: %s\n\n", $basedir;
@@ -1066,7 +1116,7 @@ sub list_sources {
             $src->{dir}, $src->{id}, $src->{scope}, $src->{year}, $src->{desc};
         printf "  入力: %s\n", join(', ', @{ $src->{files} });
         printf "  展開: %s -> %s\n", @{ $src->{unzip} } if $src->{unzip};
-        printf "  出典: %s / %s\n", $src->{sourcetitle}, format_authors($src->{sourceauthor});
+        printf "  出典: %s / %s\n", display_title($src), format_authors($src->{sourceauthor});
     }
     print "\n最終出力: <ディレクトリ>/japname2sciname_VERSION_BUILDDATE.tsv\n";
     print "          <ディレクトリ>/sciname2japname_VERSION_BUILDDATE.tsv\n";
@@ -1426,6 +1476,19 @@ sub read_xlsx {
         last if $n <= 0;
     }
     $z->close;
+}
+
+# タブ区切りテキストを読み、$cb->(\@fields) を行ごとに呼ぶ。Google スプレッド
+# シートの TSV 書き出しは引用符を使わない (セル内の改行やタブも無い)。
+sub read_tsv {
+    my ($path, $cb) = @_;
+    open my $fh, '<:raw', $path or die "読めません: $path: $!\n";
+    while (my $line = <$fh>) {
+        $line = Encode::decode('UTF-8', $line, Encode::FB_DEFAULT);
+        $line =~ s/\r?\n\z//;
+        $cb->([ split /\t/, $line, -1 ]);
+    }
+    close $fh;
 }
 
 sub xlsx_row {
@@ -2796,9 +2859,11 @@ sub parse_mammals {
 }
 
 #-----------------------------------------------------------------------------
-# shigainsect 滋賀県昆虫目録2025 (目別 xlsx)
+# shigainsect 滋賀県昆虫目録2025 (目別 TSV)
 #
-# 列はヘッダ行から決める。ただし「ガロアムシ目2025.xlsx」だけはヘッダの
+# 目ごとの Google スプレッドシートを fetch_data.pl が TSV で書き出したもの
+# (先頭のシートだけが出る)。
+# 列はヘッダ行から決める。ただしガロアムシ目 (shigainsect_Notoptera.tsv) だけはヘッダの
 # 種名（学名）と種名（和名）が入れ替わっていてデータの並びと合わないので、
 # 2列の内容 (ラテン文字か日本語か) を見て毎行ふり分ける。
 # 「亜目名」が「亜目」になっているファイルがあるのでヘッダ名も揺れを許す。
@@ -2810,9 +2875,9 @@ sub parse_shigainsect {
     for my $path (@$paths) {
         my @head;
         my $first = 1;
-        read_xlsx($path, 0, sub {
-            my ($rn, $c) = @_;
-            my @f = map { defined $_ ? trim($_) : '' } @$c;
+        read_tsv($path, sub {
+            my ($c) = @_;
+            my @f = map { trim($_) } @$c;
             if ($first) {
                 $first = 0;
                 @head = @f;
@@ -3248,49 +3313,38 @@ sub paren_pair {
 }
 
 #-----------------------------------------------------------------------------
-# 日本産トビケラの種リスト (HTML)
+# 日本産トビケラの種名一覧 (TSV)
 #
-# 文字コードは UTF-8。表は1つで、空セルと colspan による字下げが階層を表す。
-# 先頭セルの開始列が 0=亜目 / 1=科 / 2=属 / 3=種 に対応する。
-# 種の行は属名が頭文字省略形 (C. aira) なので直前の属名で展開する。
+# 日本トビケラ情報ネットワークの Google Sites に埋め込まれたスプレッドシートを
+# fetch_data.pl が TSV で書き出したもの。空の列による字下げが階層を表し、
+# 最初の空でない列が 0=亜目 / 1=科 / 2=属 / 3=種 に対応する。
+# 種の行は4列目が学名、5列目が和名で、属名が頭文字省略形 (C. aira) なので
+# 直前の属名で展開する。4列目が「種名」の行は見出し。
 #-----------------------------------------------------------------------------
 sub parse_trichoptera {
     my ($src, $paths) = @_;
     my @out;
     my @RANK_BY_COL = (rk('suborder'), rk('family'), rk('genus'), rk('species'));
     for my $path (@$paths) {
-        my $html = read_html($path);
         my $genus = '';
-        while ($html =~ m{<tr\b.*?</tr>}gsi) {
-            my $row = $&;
-            my @cells;
-            my $col = 0;
-            while ($row =~ m{<t[dh]\b([^>]*)>(.*?)</t[dh]>}gsi) {
-                my ($attr, $body) = ($1, $2);
-                my ($cs) = $attr =~ /colspan\s*=\s*"?(\d+)/i;
-                my $text = squeeze(html_text($body));
-                push @cells, [ $col, $text ] if length $text;
-                $col += $cs ? $cs : 1;
-            }
-            next unless @cells;
-            my ($start, $first) = @{ $cells[0] };
-            next if $start > 3;
+        read_tsv($path, sub {
+            my @f = map { squeeze($_) } @{ $_[0] };
+            my ($start) = grep { length $f[$_] } 0 .. $#f;
+            return unless defined $start && $start <= 3;
             if ($start < 3) {
-                my ($sci, $jap) = split_sci_jap(strip_count_note($first));
-                next unless length $sci;
+                my ($sci, $jap) = split_sci_jap(strip_count_note($f[$start]));
+                return unless length $sci;
                 $genus = $sci if $start == 2;
                 add_pair(\@out, $jap, $sci, $RANK_BY_COL[$start], 1);
-                next;
+                return;
             }
-            # 種の行。4列目が学名、5列目が和名。
-            my $sci = $first;
+            return if $f[3] eq '種名';
+            my $sci = $f[3];
             $sci =~ s/\A([A-Z])\.\s*/expand_genus($genus, $1)/e;
             $sci = norm_sciname($sci);
-            next unless length $sci;
-            my $jap = '';
-            for my $c (@cells) { $jap = $c->[1] if $c->[0] >= 4 }
-            add_pair(\@out, $jap, $sci, undef, undef);
-        }
+            return unless length $sci;
+            add_pair(\@out, (defined $f[4] ? $f[4] : ''), $sci, undef, undef);
+        });
     }
     return \@out;
 }
@@ -4074,6 +4128,14 @@ sub parse_col {
     my $zip = File::Spec->catfile(dirname($usage), $src->{unzip}[0]);
     my $meta = col_read_sources($zip, \%srcids);
 
+    # 出典に使う提供元の表題には CoL の版を添える。iNaturalist の判定は元の
+    # 表題で行うので、$meta は書き換えずに版を付けた複製を別に持つ。
+    my %shown;
+    for my $sid (keys %$meta) {
+        my ($t, @rest) = @{ $meta->{$sid} };
+        $shown{$sid} = [ (length $t ? "$t (Catalogue of Life $src->{edition})" : $t), @rest ];
+    }
+
     my @out;
     for my $id (keys %rec) {
         my ($sci, $crank, $status, $usrc, $parent) = @{ $rec{$id} };
@@ -4105,9 +4167,10 @@ sub parse_col {
                 $csci =~ s/ f\. / /;
                 ($crank, $csubrank) = (rk('subspecies'), 1);
             }
+            my $shown = $info ? $shown{$sid} : undef;
             add_pair(\@out, $name, $csci, $crank, $csubrank,
-                     scivalid => $valid, srcinfo => $info);
-            add_pair(\@out, $name, $acc, $arank, $asubrank, srcinfo => $info)
+                     scivalid => $valid, srcinfo => $shown);
+            add_pair(\@out, $name, $acc, $arank, $asubrank, srcinfo => $shown)
                 if !$valid && length $acc && $acc ne $csci;
         }
     }
