@@ -54,3 +54,11 @@
 /jbtaxon_*.sqlite3
 /yomi2japname_*.tsv
 /yomi2sciname_*.tsv
+
+# 全分類群分をまとめた和名→学名 / 学名→和名テーブル。分類群ディレクトリ内の
+# ものと違ってルート直下に出るので、個別に除外しないと git add -A で入ってしまう。
+/japname2sciname_*.tsv
+/sciname2japname_*.tsv
+
+# 未実装のスクリプトの申し送りメモ。リポジトリには含めない。
+/temp.md
