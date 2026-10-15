@@ -4,17 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## リポジトリの現状
 
-現時点でこのリポジトリに存在するのは `README.md`・`rank.def`・`yomi.tsv`・`VERSION`・`.gitignore`・`AllTaxa/wikidata.rq`、実装済みの `fetch_data.pl` と `generate_tables.pl`、および分類群ごとのディレクトリに置いた `README.md` 16件。残る3スクリプト (`generate_database.pl` / `generate_dictionary.pl` / `add_to_yomi.pl`) は**まだ実装されていない**。README.md は実装すべき仕様書として読むこと。ビルド・lint・テストの仕組みは未整備で、検証は `perl -c` と各スクリプトの `--list` / `--dry-run`、および実データでの実行と件数突き合わせで行っている。
+現時点でこのリポジトリに存在するのは `README.md`・`rank.def`・`yomi.tsv`・`VERSION`・`sources.tsv`・`.gitignore`・`AllTaxa/wikidata.rq`、実装済みの `fetch_data.pl`・`generate_tables.pl`・`generate_database.pl`、および分類群ごとのディレクトリと `NCBITaxonomy/` に置いた `README.md` 17件。残る4スクリプト (`generate_dictionary.pl` / `add_to_yomi.pl` / `sciname2japname.pl` / `japname2sciname.pl`) は**まだ実装されていない**。README.md は実装すべき仕様書として読むこと。ビルド・lint・テストの仕組みは未整備で、検証は `perl -c` と各スクリプトの `--list` / `--dry-run`、および実データでの実行と件数突き合わせで行っている。
+
+`sources.tsv` はリポジトリルートにある情報源の定義（1行1ソース、タブ区切り、先頭行が列名、`#` はコメント、配列は `|` 区切り、行の順番が定義順）。`generate_tables.pl` と `generate_database.pl` が共通に読む。`fetch_data.pl` の取得用の表（URL など）は別物で統合しない。
 
 `VERSION` はリポジトリルートの1行のバージョン文字列。`generate_tables.pl` 以降の生成物のファイル名に `_VERSION_BUILDDATE` として入る（BUILDDATE は実行日の `YYYYMMDD`）。
 
-実行環境は Perl (`/usr/bin/perl`, v5.38)。README で規定されている4つのスクリプトはすべて `.pl`。
+実行環境は Perl (`/usr/bin/perl`, v5.38)。README で規定されている7つのスクリプトはすべて `.pl`。
 
 ## プロジェクトの根幹的な制約
 
 情報源となる生物種名チェックリストの一部は改変・再配布が禁止されている。そのため **JBTaxon の成果物（DB や辞書ファイル）自体をリポジトリで配布することはできない**。配布するのは「各ユーザーがローカルで成果物を生成するためのスクリプト」だけ。生データや生成物をリポジトリにコミットする変更は、この制約に抵触するため行わないこと。
 
-`.gitignore` がこれを機械的に担保している。分類群ディレクトリの中身（`/AllTaxa/*` など16件）と参照データの `/NCBITaxonomy/*`、`*.part`、生成物（`/jbtaxon_*.sqlite3`・`/yomi2japname_*.tsv`・`/yomi2sciname_*.tsv`）を除外し、`!/<分類群>/README.md` で各ディレクトリの `README.md` だけを追跡する。**例外は `!/AllTaxa/wikidata.rq`**（生データではなく Wikidata 取得用の SPARQL クエリなので追跡する）。**パターンは必ず `/<分類群>/*` の形で書くこと**（`/AllTaxa/` のようにディレクトリ自体を除外すると git が中に降りなくなり、`README.md` を再包含できない）。新しい分類群ディレクトリを追加したときは、除外と再包含の2組を両方追加する。生データを置いた状態でも `git add -A` で入るのはスクリプトと `README.md` だけになる。
+`.gitignore` がこれを機械的に担保している。分類群ディレクトリの中身（`/AllTaxa/*` など16件）と参照データの `/NCBITaxonomy/*`、`*.part`、生成物（`/jbtaxon_*.sqlite3`・`/yomi2japname_*.tsv`・`/yomi2sciname_*.tsv`）、ルート直下に置く全分類群結合版のテーブル（`/japname2sciname_*.tsv`・`/sciname2japname_*.tsv`。確認用に手で作るもの）、申し送りメモ `/temp.md` を除外し、`!/<分類群>/README.md`（と `!/NCBITaxonomy/README.md`）で各ディレクトリの `README.md` だけを追跡する。**ルート直下に出す生成物は `/<分類群>/*` に当たらないので、新しく作るときは除外パターンを個別に足すこと。****例外は `!/AllTaxa/wikidata.rq`**（生データではなく Wikidata 取得用の SPARQL クエリなので追跡する）。**パターンは必ず `/<分類群>/*` の形で書くこと**（`/AllTaxa/` のようにディレクトリ自体を除外すると git が中に降りなくなり、`README.md` を再包含できない）。新しい分類群ディレクトリを追加したときは、除外と再包含の2組を両方追加する。生データを置いた状態でも `git add -A` で入るのはスクリプトと `README.md` だけになる。
 
 ## パイプライン構造
 
@@ -26,6 +28,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 4. `generate_dictionary.pl` — 全ディレクトリの TSV から日本語入力IME用辞書 TSV を生成
 
 3 と 4 は 2 の出力を共通の入力とする並列の枝であり、互いに依存しない。
+
+このほかに README は補助のスクリプトを3つ規定している：
+
+- `add_to_yomi.pl` — 和名→学名テーブルから、`yomi.tsv` に読みが無いため読みを自動生成できない和名を検出し、`yomi.tsv` の末尾に yomi 空欄で追記する（読みは作者が手で埋めてリポジトリの `yomi.tsv` を更新する）
+- `sciname2japname.pl` — 学名をクエリとして DB の `sciname2japname` テーブルを検索し、和名を返す
+- `japname2sciname.pl` — 和名をクエリとして DB の `japname2sciname` テーブルを検索し、学名を返す
+
+検索スクリプト2つがテーブル名を名指ししているので、**DB のテーブル名は `japname2sciname` / `sciname2japname` で固定**。
 
 ### ディレクトリ構成
 
@@ -133,11 +143,12 @@ shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（�
   - 外した結果がまた同じ形をしていることがあるので**外せなくなるまで繰り返す**（`D型肝炎ウイルス1` は `肝炎ウイルス1`・`D型肝炎ウイルス`・`肝炎ウイルス` を生む）。1文字まで削れたものは名前ではないので捨てる。
   - 同じ和名が学名の異なる複数のレコードから生じる（`オウムアデノウイルス` は4つの学名から生じる）。**これらは1つにまとめてはならない**——`馬パピローマウイルス1型`〜`7型` から作られる `馬パピローマウイルス` は、型ごとに学名が違うので4行になる（5型は4型と、6型・7型は3型と学名が同じなので、そこは1行にまとまる）。
 - **NFKC は使わない。** `Itô` / `Bouchè` / `Váňa` を壊す。リガチャ (`ﬁ ﬂ ﬀ`)・康熙部首・全角英数・半角カナ・ローマ数字は明示的な置換表 (`%CHAR_FIXUP` / `%KANGXI` / `$FULLWIDTH_KANA` / `%KANA_VOICED` / `@ROMAN_UPPER` / `@ROMAN_LOWER`) で直す。
-- **作り直しは差分だけ行う。** ソースごとに `<分類群>/.jbtaxon/<ソースID>.tsv.fp` に指紋を置き、一致していればパースを飛ばす。指紋に入れるのは (1) `VERSION` と `BUILDDATE`、(2) 本スクリプトの**共通部分**のダイジェスト、(3) **そのソースのパーサ部分**のダイジェスト、(4) `@SOURCES` のそのエントリ、(5) 入力ファイルの一覧・サイズ・更新時刻。統合も同様に `<分類群>/.jbtaxon/merge.fp` で判定し、中間 TSV と参照データ（`NameUsage.tsv` / `names.dmp`）が変わっていなければ飛ばす。
+- **作り直しは差分だけ行う。** ソースごとに `<分類群>/.jbtaxon/<ソースID>.tsv.fp` に指紋を置き、一致していればパースを飛ばす。指紋に入れるのは (1) `VERSION` と `BUILDDATE`、(2) 本スクリプトの**共通部分**のダイジェスト、(3) **そのソースのパーサ部分**のダイジェスト、(4) `sources.tsv` のそのエントリ、(5) 入力ファイルの一覧・サイズ・更新時刻。統合も同様に `<分類群>/.jbtaxon/merge.fp` で判定し、中間 TSV と参照データ（`NameUsage.tsv` / `names.dmp`）が変わっていなければ飛ばす。
+  - `sources.tsv` はスクリプトの外にあるのでダイジェストに入らない。そこで**統合の指紋 (`merge.fp`) にもそのディレクトリの各ソースの定義を入れてある**（scope や year を変えると衝突解決が変わるため）。
   - 共通部分とパーサ部分は `#---` の罫線でセクションに切り、**`sub parse_<名前>` をちょうど1つ定義しているセクションだけ**をそのパーサのものとみなす（`col_scan` や `jaflist_scinames` のようなパーサ固有の補助サブは同じセクションに置いてあるので一緒に扱われる）。判定できないものは共通部分に入るので、**取りこぼして作り直しを忘れることはない**（余分に作り直す方向に倒れる）。なお**各パーサの前書きコメントは罫線で挟まれた独立のセクションなので共通部分に入る**。コメントだけを直したときも全ソースを作り直す。
   - したがって `norm_sciname` のような共通の関数を直すと全ソースを作り直し、1つのパーサだけを直すとそのソースだけを作り直す。実測で全生成 4分に対し、無変更の再実行は 18秒、1〜2ソースだけの作り直しも 30秒弱（どちらも Catalogue of Life の走査は毎回行う）。
-  - **中間 TSV は既定で残す**（残っていないと差分判定ができない）。消したいときは `--clean`。`--keep` は既定になったので何もしない。
-- 中間出力はソース別に `<分類群>/.jbtaxon/<ソースID>.tsv`（10列 `japname / sciname / japvalid / scivalid / rank / subrank / nos2j / sourcetitle / sourceauthor / sourceurl`）。`nos2j` は「有効な和名だが `sciname2japname` の2列目には使わない」印で、分割前の和名を代表に残したまま分割後の和名も和名→学名テーブルに載せるために使う。末尾の出典3列は**レコード単位の上書き**で、空なら `@SOURCES` の値を使う。Catalogue of Life だけがここを埋める。既定では最後に削除し、`--keep` で残す。`.gitignore` の `/<分類群>/*` に既にマッチするのでパターンの追加は不要。
+  - **中間 TSV は既定で残す**（残っていないと差分判定ができない）。消したいときは `--clean`。`--keep` は中間 TSV ではなく、落としたレコードの記録（`.tsv.rejected`）を残すためのもの。
+- 中間出力はソース別に `<分類群>/.jbtaxon/<ソースID>.tsv`（10列 `japname / sciname / japvalid / scivalid / rank / subrank / nos2j / sourcetitle / sourceauthor / sourceurl`）。`nos2j` は「有効な和名だが `sciname2japname` の2列目には使わない」印で、分割前の和名を代表に残したまま分割後の和名も和名→学名テーブルに載せるために使う。末尾の出典3列は**レコード単位の上書き**で、空なら `sources.tsv` の値を使う。Catalogue of Life だけがここを埋める。差分判定に使うので既定で残り、`--clean` で消す。`.gitignore` の `/<分類群>/*` に既にマッチするのでパターンの追加は不要。
 - **ファイル末尾の「実行」ブロックより前にサブルーチンが使う `my` の表を置くこと。** 実行文がファイル途中にあると、その後ろで宣言された `my %TABLE = (...)` の代入前に参照してしまい、黙って空の表を使う。この事故を防ぐため実行文はすべてファイル末尾に集めてある。
 - 失敗しても即座に中断せず最後まで走り切り、失敗一覧を末尾に再掲する。exit は `$n_fail ? 1 : 0`。
 - CLI: `--dir` / `--only`（分類群、複数指定可）/ `--source`（ソースID、複数指定可）/ `--force` / `--keep`（落としたレコードの記録を残す）/ `--clean` / `--version` / `--builddate` / `--list` / `--dry-run` / `--help`。`--list` と `--dry-run` はパースしない。
@@ -147,11 +158,11 @@ shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（�
 `merge_directory()` は2周する。**この2つを混同しないこと。**
 
 1. 第1周で `%validity` を作る。**学名は最も新しいソースの判定だけを採り（狭さは見ない）、和名は狭さ→新しさ→定義順で決める**（`update_validity` の `$by_scope`）。表の1件は `[ 有効か, scope, year, 定義順, 判定の食い違いがあったか ]`。そのうえで**学名の有効性は Catalogue of Life で上書きする**（下記）。
-2. 第2周で `%adopt_j2s` / `%adopt_s2j` を作る。衝突キーは1列目の名前で、(a) `scope` が大きい（＝狭い）ソース、(b) 同じなら `year` が新しい、(c) それも同じなら `@SOURCES` の定義順。
+2. 第2周で `%adopt_j2s` / `%adopt_s2j` を作る。衝突キーは1列目の名前で、(a) `scope` が大きい（＝狭い）ソース、(b) 同じなら `year` が新しい、(c) それも同じなら `sources.tsv` の定義順（行の順番）。
 
 **2列目に置けるのは「解決後の有効性が 1」の名前だけ**。この制約を第2周に入れてあるので「2列目にシノニムは使わない」が構造として保証される。レコード自身のフラグだけで判定すると、古いソースが有効名と言い新しいソースがシノニムと言う名前が2列目に残ってしまう。
 
-`scope` は対象分類群の階層を `rank.def` の rank 番号で表したもので、**大きいほど狭い**。`year` は版が明示されているソースはその年、継続更新のサイトは取得年（2026）。
+`scope` は**そのチェックリストが対象とする分類群の rank 値**（`rank.def` の番号）で、**大きいほど狭い**（世界哺乳類標準和名リストは哺乳綱なので 8）。対象が複数の分類群にまたがるリストや単系統でない群のリストは、**構成する群それぞれの rank のうち一番広いもの**を採る（全体を含む最小の分類群の rank ではない）。爬虫両生類・魚類・FernGreenList・地衣類は 8、YList（維管束植物門）・Hattoria 9（苔類門＋ツノゴケ門）・海藻（紅藻門・緑藻門・褐藻綱）は 5、ウイルスは 1。`year` は版が明示されているソースはその年、継続更新のサイトは取得年（2026）。
 
 #### ソース別の実装で外せない点
 
@@ -193,7 +204,9 @@ shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（�
   - **参照データ側の正規化が必須。** Catalogue of Life の名前の列に `Candidatus` は現れない（3GB 中43行に出てくるが、どれも別の列）が、**NCBI Taxonomy は `Candidatus Carsonella ruddii` を `scientific name`、`Carsonella ruddii` を `equivalent name` として両方持っている**ので、片側だけ外すと突き合わせが外れる。
   - 外すことで NCBI 側の22件が新たにこちらの学名に当たるようになるが（`Bathyarchaeota` `Korarchaeum cryptofilum` `Melainabacteria` など。`Candidatus Limicola` が鳥の属 `Limicola` と衝突する同名異物も含む）、**いずれもソース間の判定が一致しているので NCBI を引く条件に入らず、出力は変わらない**。`%ncbi` は同じ名前に複数の class が当たるとき有効名を優先するので、衝突しても有効名の判定が勝つ。
 - **`norm_sciname` は接続語の直後だけ識別子を許す。** `sp. 1` / `subsp. 2` / `sp. L` / `sp. 'yamato'` を残しつつ、著者名を種小名と取り違えないため。`sensu` `auct.` `non` `nec` `complex` `group` `Type` `of` は名前の一部ではないのでそこで打ち切る。
+- **識別子の付かない「属名 sp.」は和名で扱いを分ける**（`add_pair`。全ソース共通）。和名が種より上の階層語で終わるなら（河川水辺の国勢調査の `フナ属 / Carassius sp.`）属そのものを指しているので、**属の学名に付かない ` sp.` を外し**（`Carassius`）、rank は和名の階層語に合わせる。それ以外（魚類の `アイコバンハゼ / Gobiodon sp.`）はその属の未記載種・未同定種なので**種にする**——`rank_from_sciname` は `sp.` を語として数えないので語尾から属（`Neritina` は亜族、`Psychidae` は科）と推してしまい、和名が種より上の有効名の形（カナ名＋階層語）を満たさずシノニムに落ちていた。`spp.` は複数の種をまとめた書き方なので触らない。
 - **Catalogue of Life** — `2026-09-25_xr_coldp.zip` から展開した `NameUsage.tsv`（約3GB）と `VernacularName.tsv` を突き合わせる。巨大なので **`:encoding(UTF-8)` を通さずバイト列で行を読み、1列目の ID が必要な集合にある行だけ split して該当フィールドを decode する**。シノニムの有効名は `col:parentID` の先にあるので2周する。`language` が `jpn` の和名は 100,374件（2026-09-25 XR。GBIF Backbone Taxonomy の 27,558件の上位互換）。ローマ字表記の和名は `is_placeholder` が日本語文字を含まない名前として落とす（意図した挙動）。
+  - **レコードは ID の順に出す**（`parse_col` の `sort keys %rec`）。同じ組を複数の提供元が持つとき統合は先に出た方の出典を採るので、ハッシュの順に回すと実行のたびに出典3列が入れ替わる（実際に AllTaxa で約230行ずつ揺れていた）。
   - 書庫は展開すると 5.6GB・21,425 ファイルになるので、**`unzip_only` で使う2ファイルだけを展開する**。提供元のメタデータ `source/<ID>.yaml` は展開せず、必要なものだけを書庫の1回のストリーム走査で読む。
   - **エントリごとの `sourceID` から出典を作る**（README の規定）。`source/<ID>.yaml` の `title` / `author`→`editor`→`creator`→`contact` / `url` を使い、人名が無いデータベースは団体名、それも無ければ表題を著者に使う。YAML の完全な解釈はしないが、`title` は複数行の二重引用符付きスカラで書かれることがあるのでそこだけは畳む。
 - **Wikidata** — `ranks_ja`（種・属・科…）から rank を決める。有効名／シノニムの情報を持たないので学名は常に有効名。
@@ -207,6 +220,24 @@ shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（�
 - **iNaturalist Taxonomy（CoL の提供元の1つ）は日本産スズメバチ・アシナガバチの亜種を `f.` で書く**（`Vespa analis f. insularis`）。品種ではないので `f.` を外して亜種として扱う。この提供元の `f.` 付きは15件あり、すべてこの形（本物の品種は1件もない）。
 - **ウイルス** — ICTV の Species 欄には著者名が付かないので **`add_pair` の `rawsci` オプションで学名をそのまま使う**。`norm_sciname` の「名前らしいトークンだけ採る」規則は `Alfamovirus AMV` や `Duamitovirus crpa1` の種小名を切り落としてしまう。ただし `rawsci` でも `fixup_chars` と `space_sci_digits` は通すので、`Duamitovirus crpa1` は `Duamitovirus crpa 1` になる。和名の列名は2ファイルで違う（`ウイルス和名` と `和名`）のでヘッダから決める。
 - **地衣類の高次分類群 (`systematics.html`)** — 罫線文字による木構造。字下げは使わず和名の接尾辞で rank を決める。`(Syn.: …)` や `（“…”の和名は却下）` は注記であって和名の別名ではないので、括弧ごと落としてから切り分ける。門などが総大文字で書かれている行があるので `ucfirst(lc)` で直す。
+
+### generate_database.pl の実装契約
+
+実装済み。実行は約6秒・ピーク RSS 約670MB（入力 213,286 + 223,662 行、出力 170,081 + 178,016 行、DB 約99MB）。以下は変更してはならない約束事：
+
+- **ここで解決するのはディレクトリ間の衝突だけ。** 名前ごとの有効名／シノニムの判定（CoL・NCBI を引くもの）は第2段で済んでいる。
+- **分類群ディレクトリどうしは原則として比べず、どちらの行も残す。** 扱う生物がまったく違うので、片方の判定をもう片方に当てると別の生物についての判定を当てることになる。比べるのは「上位」と決めた組み合わせだけ（`superiors` / `%SUPERIOR_DIRS`）:
+  - `AllTaxa` は他の全ディレクトリを上位とする（全生物を広く扱うので専門のリストに従う）。
+  - `Lichens` は `Seaweeds` と `Fungi` を上位とする（藻類・菌類と重なったらそちらに従う）。現データでは共通の名前が無いので効いていない。
+- **上位に従うのは、上位が同じ組（和名と学名の対）を持つときだけ**（`resolve_pair`）。名前だけで比べると、分類群をまたぐ同名異物に別の生物の判定を当ててしまう（`ツルタケ` は YList ではタケのシノニム、Wikidata では菌類の `Amanita vaginata` の有効名。名前で比べていた版ではキノコの和名が消えていた）。このとき組の和名・学名の有効性は上位のその組での判定に置き換え（上位が複数あって割れたら、どれかが有効なら有効）、**2列目がその組で無効なら行を落とす**（「2列目にシノニムは現れない」を組の単位で守る）。同じ組を上位も残していれば下位の行は上位に譲る。実測で落とすのは j2s 39 行・s2j 1,758 行、和名を1つも持たなくなる学名は7件（`Antrophyum parvulum` など。専門のリスト自身がその組の和名をシノニムとしているもの）。
+  - かつては全ディレクトリを「狭さ→新しさ→定義順」で比べ、名前ごとに有効性を1つに決めていた。和名を失う学名が262件出た（`ツルタケ` のほか、YList が蘚類のリストに新しさで勝って `アオイトゴケ` を消すなど）ので廃止した。**再導入しないこと。**
+- **同じ名前でも `taxondir` によって有効性のフラグが違うことがある**（`アオイトゴケ / Anomodon minor` は Bryophytes で有効、VascularPlants でシノニム）。AllTaxa では、上位が同じ組を持つ行だけ判定が置き換わるので、同じディレクトリ内でもフラグが行ごとに違いうる。
+- **スキーマ**: `japname2sciname(japname, sciname, japvalid, rank, subrank, sourcetitle, sourceauthor, sourceurl, taxondir)` と `sciname2japname`（1〜3列目が `sciname, japname, scivalid`）。同じ組がディレクトリごとに別の行になる（j2s で 1,839 組）ので、**主キーは `(1列目, 2列目, taxondir)`**。2列目に索引。`taxondir` は行の由来の分類群ディレクトリ。照合は既定の `BINARY` のまま——前方一致は `>= ? AND < ?` の範囲検索で主キーの索引を使える。補助に `rank(rank, name)`（`rank.def` をそのまま。1つの番号に複数の名前）と `meta(key, value)`（`version` / `builddate`）。
+- `sources.tsv` はディレクトリの一覧と並び順にだけ使う（scope / year は使わない）。`read_version` / `read_rank_def` / `read_sources` は `generate_tables.pl` からの写しで、スクリプト間でモジュールは共有しない。
+- **`--builddate` は必須。** 入力の TSV と出力の `jbtaxon_VERSION_BUILDDATE.sqlite3` に同じ日付を使う。省略したら使い方を表示して exit 2。
+- **出力が既にあればスキップし、`--force` で作り直す。** そのため**入力 TSV が1つでも欠けていれば DB を作らない**（欠けた DB を正式な名前で書くと、次の実行がそれを飛ばしてしまう）。他の入力は最後まで読んで失敗を報告し、exit 1。
+- `.part` に作ってから rename する。`journal_mode=OFF` / `synchronous=OFF` で1トランザクションに入れ、最後に `ANALYZE`。`sqlite3` コマンドには依存しない（入っていない環境がある）。非コアモジュールは `DBI` / `DBD::SQLite` だけで、起動時に不足を検出して apt / cpanm を案内し exit 2。
+- CLI: `--builddate`（必須）/ `--dir` / `--only`（ディレクトリ、複数指定可）/ `--force` / `--version` / `--list`（ディレクトリの上下関係を表示）/ `--dry-run` / `--help`。`--list` と `--dry-run` は DB を作らない。
 
 ### ダウンロードURLは固定する（追従自動化しない）
 
@@ -293,6 +324,8 @@ shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（�
 
 狭いソースが古く広いソースが新しい場合、「狭いソース由来の名前に、新しい広いソース由来の valid フラグが付く」組み合わせが正しく起こりうる。実装ではこの2つの判定を混同しないこと。
 
+**この節はディレクトリ内（`generate_tables.pl`）の規則。** ディレクトリをまたぐ衝突（`generate_database.pl`）は狭さや新しさでは比べず、決めた上下関係（AllTaxa は他の全て、Lichens は Seaweeds と Fungi に従う）で、上位が同じ組を持つときだけ上位に従う。詳しくは「generate_database.pl の実装契約」。
+
 ## rank / subrank
 
 **`rank.def` が rank 値の唯一の正**。README にも階層の一覧が記載されているが、README 側には rank 0 (`no rank`, `clade`) が含まれておらず、README 自身が「rank の値は変更されることがある」と述べている。実装では README の一覧をハードコードせず `rank.def` を読むこと。
@@ -312,9 +345,9 @@ shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（�
 - `<分類群>/japname2sciname_VERSION_BUILDDATE.tsv` — `japname / sciname / japvalid / rank / subrank / sourcetitle / sourceauthor / sourceurl`。和名シノニムがある場合、同一 sciname に対し japname が異なる行が複数生じる。sciname 側にシノニムは使わない。
 - `<分類群>/sciname2japname_VERSION_BUILDDATE.tsv` — `sciname / japname / scivalid / rank / subrank / sourcetitle / sourceauthor / sourceurl`。学名シノニムがある場合、同一 japname に対し sciname が異なる行が複数生じる。japname 側にシノニムは使わない。
 
-`japvalid` / `scivalid` は1列目の名前が有効名かどうかのフラグ（0 = invalid, 1 = valid）で、シノニムなら 0。**2列目の名前側にはシノニムが現れない設計なので、このフラグは常に1列目に対応する**。位置は rank/subrank の手前（3列目）。`sourcetitle` / `sourceauthor` / `sourceurl` は採用したソースのもの（Catalogue of Life だけはエントリごとの提供元）で、**著者が3名以上なら2人目以降を省略し、日本語なら「～ら」、英語なら「～ et al.」とする**。そのため `@SOURCES` の `sourceauthor` は文字列ではなく著者名の配列で持ち、出力時に `format_authors()` で整形する。**ライセンス上は出典明記が不要なソース（CC0 など）も含め全ソースで3列とも必ず埋める**。出典明記が求められる情報源（魚類・YList・地衣類・哺乳類）の要求もこれで満たされる。値は `generate_tables.pl` の `@SOURCES` が唯一の持ち場で、原典やページに著者の記載があればその表記に従い、記載がなければ発行主体（学会・機関）を書く。
+`japvalid` / `scivalid` は1列目の名前が有効名かどうかのフラグ（0 = invalid, 1 = valid）で、シノニムなら 0。**2列目の名前側にはシノニムが現れない設計なので、このフラグは常に1列目に対応する**。位置は rank/subrank の手前（3列目）。`sourcetitle` / `sourceauthor` / `sourceurl` は採用したソースのもの（Catalogue of Life だけはエントリごとの提供元）で、**著者が3名以上なら2人目以降を省略し、日本語なら「～ら」、英語なら「～ et al.」とする**。そのため `sources.tsv` の `sourceauthor` は著者名を `|` で区切った配列で持ち、出力時に `format_authors()` で整形する。**ライセンス上は出典明記が不要なソース（CC0 など）も含め全ソースで3列とも必ず埋める**。出典明記が求められる情報源（魚類・YList・地衣類・哺乳類）の要求もこれで満たされる。値は `sources.tsv` が唯一の持ち場で、原典やページに著者の記載があればその表記に従い、記載がなければ発行主体（学会・機関）を書く。
 
-**`sourcetitle` の末尾には版を ` (…)` で付ける**（半角括弧、前に半角空白）。`@SOURCES` の `edition` キーで指定し、`display_title()` が組み立てる。
+**`sourcetitle` の末尾には版を ` (…)` で付ける**（半角括弧、前に半角空白）。`sources.tsv` の `edition` 列で指定し、`display_title()` が組み立てる。
 
 - 旧版も最新版も固定 URL があるもの → 版の名前（`日本産魚類全種目録 (2026年8月27日版)` `Catalogue of Life (2026-09-25 XR)`）。CoL の提供元ごとの表題には `(Catalogue of Life 2026-09-25 XR)` を付ける（`parse_col`。iNaturalist の判定は版を付ける前の表題で行う）。
 - DOI があるもの、Web Archive の特定の日のスナップショット → 何も付けない（`edition` を書かない）。ハネカクシ・有剣膜翅類・FernGreenList・Hattoria 2件。
@@ -336,12 +369,16 @@ shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（�
 
 ### IME辞書（ステップ4の出力）
 
-- `yomi2japname.tsv` — `yomi / japname / pos`。和名シノニムがある場合、「シノニムの読み→有効名の和名」と「シノニムの読み→シノニム」の両方の行を出力する。
-- `yomi2sciname.tsv` — `yomi / sciname / pos`。和名シノニムがある場合、「シノニムの読み→有効名の学名」の行を出力する。学名シノニムは出力しない。
+用途は汎用・Mozc ユーザー辞書用・Mozc システム辞書用・Gboard 単語リスト用の4種類で、`--for` で切り替える。ファイル名はリポジトリルートの `yomi2japname_VERSION_BUILDDATE.tsv` / `yomi2sciname_VERSION_BUILDDATE.tsv`。
 
-`pos` はデフォルト `名詞`、`--for=mozc-user` のとき `短縮読み`。
+- `yomi2japname_VERSION_BUILDDATE.tsv` — `yomi / japname / pos / comment`。和名シノニムがある場合、「シノニムの読み→有効名の和名」と「シノニムの読み→シノニム」の両方の行を出力する。
+- `yomi2sciname_VERSION_BUILDDATE.tsv` — `yomi / sciname / pos / comment`。和名シノニムがある場合、「シノニムの読み→有効名の学名」の行を出力する。学名シノニムは出力しない。
 
-`--for=mozc-system` のときのみフォーマットが変わり `yomi / lid / rid / cost / japname`（または `sciname`）になる。このモードでは `--id-def` で Mozc の `id.def` のパスを与える必要がある。lid/rid は種名・亜種名なら「名詞,固有名詞,一般」、種より上位の分類群名なら「名詞,固有名詞,組織」に対応する ID を `id.def` から引く。cost は和名がデフォルト 20000 (`--japcost` で変更可)、学名がデフォルト 30000 (`--scicost` で変更可)。
+`pos` はデフォルト `名詞`、`--for=mozc-user` のとき `短縮読み`。`comment` は出典3列を `sourcetitle (sourceurl) by sourceauthor` の形にしたもの。
+
+`--for=gboard` のときは `yomi / japname / lang / pos`（または `sciname`）になる。`lang` は常に `ja-JP`、`pos` は常に `短縮読み`。
+
+`--for=mozc-system` のときは `yomi / lid / rid / cost / japname`、学名側は `yomi / lid / rid / cost / sciname / ENGLISH` になる（`ENGLISH` は変換後が他言語であることを Mozc に示すラベル）。このモードでは `--id-def` で Mozc の `id.def` のパスを与える必要がある。lid/rid は種名・亜種名なら「名詞,固有名詞,一般」、種より上位の分類群名なら「名詞,固有名詞,組織」に対応する ID を `id.def` から引く。cost は和名・学名ともデフォルト 9999 で、それぞれ `--japcost` / `--scicost` で変えられる。
 
 ## ドキュメントの言語
 
