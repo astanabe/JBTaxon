@@ -251,274 +251,10 @@ my @ALLTAXA_LEVELS = (
 #-----------------------------------------------------------------------------
 # ソース定義テーブル
 #
-# dir          ... 分類群ディレクトリ名
-# id           ... ソース識別子。中間 TSV のファイル名を兼ねる
-# desc         ... 表示用の説明
-# files        ... 入力ファイル (ディレクトリからの相対パス。glob 可)
-# parser       ... do_parse の if/elsif ディスパッチのキー
-# scope        ... 対象分類群の階層を rank.def の rank 番号で表したもの。
-#                  大きいほど狭い。名前の採用順位に使う
-# year         ... ソースの版の年。有効名／シノニムの判定に使う。
-#                  版が明示されているものはその年、継続更新のサイトは取得年
-# sourcetitle / sourceauthor / sourceurl ... 最終 TSV の6〜8列目にそのまま出る。
-#                  ライセンス上は出典明記が不要なソース (CC0 など) も含め、
-#                  **全ソースで3列とも必ず埋める**。原典やページに著者の記載が
-#                  あればその表記に従い、記載がなければ発行主体 (学会・機関) を書く。
-# edition      ... sourcetitle の末尾に「 (…)」で付ける版の表記 (display_title)。
-#                  旧版も最新版も固定 URL があるものは版の名前を書く。
-#                  'accessed' なら入力ファイルの更新時刻 (= 取得日) から
-#                  「Accessed on YYYY-MM-DD」を作る。DOI があるものと Web Archive の
-#                  特定の日のスナップショットは省略する (何も付けない)。
-# unzip        ... [zip, 展開後に存在するはずのファイル] 。パース前に展開する
-# optional     ... 1 なら入力が無くても失敗として数えない
+# 定義はリポジトリルートの sources.tsv にある (generate_database.pl と共通)。
+# 列の意味は同ファイルの先頭のコメントを参照。行の順番が定義順になる。
 #-----------------------------------------------------------------------------
-my @SOURCES = (
-    {   dir => 'AllTaxa', id => 'ksn_zenseibutsu', parser => 'alltaxa',
-        desc  => '河川水辺の国勢調査のための生物リスト (R01〜R07)',
-        files => [ map { "R0${_}zenseibutsu.xlsx" } 1 .. 7 ],
-        scope => 0, year => 2025,
-        edition => '令和元年度〜令和7年度版',
-        sourcetitle  => '河川水辺の国勢調査のための生物リスト',
-        sourceauthor => [ '国土交通省 国土技術政策総合研究所' ],
-        sourceurl    => 'https://www.nilim.go.jp/lab/fbg/ksnkankyo/mizukokuweb/system/seibutsuListfile.htm',
-    },
-    {   dir => 'AllTaxa', id => 'col', parser => 'col',
-        desc  => 'Catalogue of Life (2026-09-25 XR)',
-        files => [ 'NameUsage.tsv', 'VernacularName.tsv' ],
-        # ColDP の書庫は 5.6GB・21,425 ファイルある。必要な2つだけ展開し、
-        # source/*.yaml は書庫から直接読む。
-        unzip => [ '2026-09-25_xr_coldp.zip', 'NameUsage.tsv' ],
-        unzip_only => [ 'NameUsage.tsv', 'VernacularName.tsv' ],
-        scope => 0, year => 2026,
-        edition => '2026-09-25 XR',
-        sourcetitle  => 'Catalogue of Life',
-        # metadata.yaml の creator は50名以上いる。format_authors が3名以上を
-        # 「先頭 et al.」に畳むので、先頭3名だけを持てば README の表記と一致する。
-        sourceauthor => [ 'Olaf Bánki', 'Yury Roskov', 'Markus Döring' ],
-        sourceurl    => 'https://download.checklistbank.org/col/monthly/2026-09-25_xr_coldp.zip',
-    },
-    {   dir => 'AllTaxa', id => 'wikidata', parser => 'wikidata',
-        desc  => 'Wikidata 学名・和名対応 (QLever で取得した CSV)',
-        files => [ 'wikidata.csv' ],
-        scope => 0, year => 2026,
-        edition => 'accessed',
-        sourcetitle  => 'Wikidata',
-        sourceauthor => [ 'Wikidata contributors' ],
-        sourceurl    => 'https://www.wikidata.org/',
-    },
-    {   dir => 'Mammals', id => 'mammal_society', parser => 'mammals',
-        desc  => '世界哺乳類標準和名リスト (2021年度版)',
-        files => [ 'list_20211223/list_20211223.xlsx' ],
-        unzip => [ 'list_20211223.zip', 'list_20211223/list_20211223.xlsx' ],
-        scope => 8, year => 2021,
-        edition => '20211223版',
-        sourcetitle  => '世界哺乳類標準和名リスト',
-        sourceauthor => [ '川田 伸一郎', '岩佐 真宏', '福井 大', '新宅 勇太', '天野 雅男', '下稲葉 さやか', '樽 創', '姉崎 智子', '鈴木 聡', '押田 龍夫', '横畑 泰志' ],
-        sourceurl    => 'https://www.mammalogy.jp/list/index.html',
-    },
-    {   dir => 'Reptiles_Amphibians', id => 'herpetology_jp', parser => 'herpetology',
-        desc  => '日本産爬虫両生類標準和名リスト',
-        files => [ 'index_j.html' ],
-        scope => 8, year => 2026,
-        edition => 'accessed',
-        sourcetitle  => '日本産爬虫両生類標準和名リスト',
-        sourceauthor => [ '日本爬虫両棲類学会' ],
-        sourceurl    => 'https://herpetology.jp/wamei/index_j.php',
-    },
-    {   dir => 'Fishes', id => 'jaflist', parser => 'jaflist',
-        desc  => '日本産魚類全種目録 (JAF List)',
-        files => [ '20260827_JAFList.xlsx' ],
-        scope => 8, year => 2026,
-        edition => '2026年8月27日版',
-        sourcetitle  => '日本産魚類全種目録',
-        sourceauthor => [ '本村 浩之' ],
-        sourceurl    => 'https://www.museum.kagoshima-u.ac.jp/staff/motomura/jaf.html',
-    },
-    {   dir => 'Insects', id => 'naro_insecta', parser => 'naro',
-        desc  => '昆虫情報データベース (Insecta)',
-        files => [ 'naro_insecta_page*.html' ],
-        scope => 8, year => 2026,
-        edition => 'accessed',
-        sourcetitle  => '昆虫情報データベース',
-        sourceauthor => [ '国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット' ],
-        sourceurl    => 'https://insect-web.rad.naro.go.jp/flame/tree',
-    },
-    {   dir => 'Insects', id => 'shigainsect', parser => 'shigainsect',
-        desc  => '滋賀県昆虫目録2025 (目別 TSV)',
-        files => [ 'shigainsect_*.tsv' ],
-        scope => 8, year => 2025,
-        edition => 'accessed',
-        sourcetitle  => '滋賀県昆虫目録2025',
-        sourceauthor => [ '滋賀県昆虫目録作成グループ' ],
-        sourceurl    => 'https://sites.google.com/view/shigainsect/',
-    },
-    {   dir => 'Insects', id => 'listmj', parser => 'listmj',
-        desc  => 'List-MJ 日本産蛾類総目録',
-        files => [ 'ListMJ3-*.xlsx' ],
-        scope => 14, year => 2021,
-        edition => '2021.6.3版',
-        sourcetitle  => 'List-MJ 日本産蛾類総目録',
-        sourceauthor => [ '神保 宇嗣' ],
-        sourceurl    => 'http://listmj.mothprog.com/',
-    },
-    {   dir => 'Insects', id => 'butterfly_list', parser => 'butterfly',
-        desc  => '日本産蝶類の学名リスト (科別5ページ)',
-        files => [ 'butterfly_*.html' ],
-        scope => 18, year => 2026,
-        edition => 'accessed',
-        sourcetitle  => '日本産蝶類の学名リスト',
-        sourceauthor => [ '長田 庸平' ],
-        sourceurl    => 'https://japanesebutterfly.wixsite.com/butterfly-list',
-    },
-    {   dir => 'Insects', id => 'trichoptera', parser => 'trichoptera',
-        desc  => '日本産トビケラの種名一覧',
-        files => [ 'trichoptera_checklist.tsv' ],
-        scope => 14, year => 2026,
-        edition => 'accessed',
-        sourcetitle  => '日本産トビケラの種名一覧',
-        sourceauthor => [ '日本トビケラ情報ネットワーク' ],
-        sourceurl    => 'https://sites.google.com/view/tobikera/home/checklist',
-    },
-    {   dir => 'Insects', id => 'staphylinidae', parser => 'staphylinidae',
-        desc  => '日本産ハネカクシ科総目録',
-        files => [ 'staphylinidae_p069.pdf' ],
-        scope => 19, year => 2013,
-        sourcetitle  => '日本産ハネカクシ科総目録（昆虫綱：甲虫目）',
-        sourceauthor => [ '柴田 泰利', '丸山 宗利', '保科 英人', '岸本 年郎', '直海 俊一郎', '野村 周平', 'Volker Puthz', '島田 孝', '渡辺 泰明', '山本 周平' ],
-        sourceurl    => 'https://doi.org/10.15017/26400',
-    },
-    {   dir => 'Insects', id => 'aculeata', parser => 'aculeata',
-        desc  => '日本産有剣膜翅類目録 (2016年版)',
-        files => [ 'aculeata_hym_list_2016_ver5.pdf' ],
-        scope => 16, year => 2016,
-        sourcetitle  => '日本産有剣膜翅類目録（2016 年版）',
-        sourceauthor => [ '寺山 守' ],
-        sourceurl    => 'https://web.archive.org/web/20220324223234/https://sc888fba2c6537423.jimcontent.com/download/version/1486475674/module/12561110890/name/Hym.list.%28Japan%292016.ver5.pdf',
-    },
-    {   dir => 'Spiders', id => 'naro_araneae', parser => 'naro',
-        desc  => '昆虫情報データベース (Araneae)',
-        files => [ 'naro_araneae_page*.html' ],
-        scope => 14, year => 2026,
-        edition => 'accessed',
-        sourcetitle  => '昆虫情報データベース',
-        sourceauthor => [ '国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット' ],
-        sourceurl    => 'https://insect-web.rad.naro.go.jp/flame/tree',
-    },
-    {   dir => 'Nematodes', id => 'naro_nematoda', parser => 'naro',
-        desc  => '昆虫情報データベース (Nematoda)',
-        files => [ 'naro_nematoda_page*.html' ],
-        scope => 5, year => 2026,
-        edition => 'accessed',
-        sourcetitle  => '昆虫情報データベース',
-        sourceauthor => [ '国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット' ],
-        sourceurl    => 'https://insect-web.rad.naro.go.jp/flame/tree',
-    },
-    {   dir => 'Tanaids', id => 'tanaids', parser => 'tanaids',
-        desc  => '日本近海産タナイス類リスト',
-        files => [ 'jpnlist.html' ],
-        scope => 14, year => 2026,
-        edition => 'accessed',
-        sourcetitle  => '日本近海産タナイス類リスト',
-        sourceauthor => [ '角井 敬知' ],
-        sourceurl    => 'https://sites.google.com/site/tnidjpn/tanaidacea/jpnlist',
-    },
-    {   dir => 'Earthworms', id => 'mimizu', parser => 'earthworms',
-        desc  => '日本産大型陸棲ミミズの種名一覧',
-        files => [ 'nihonsan_mimizu_list.xlsx' ],
-        scope => 14, year => 2025,
-        edition => 'accessed',
-        sourcetitle  => '日本産大型陸棲ミミズの種名一覧',
-        sourceauthor => [ '南谷 幸雄' ],
-        sourceurl    => 'https://japanese-mimizu.jimdofree.com/%E3%83%9F%E3%83%9F%E3%82%BA%E3%81%AE%E5%88%86%E9%A1%9E/',
-    },
-    {   dir => 'Isopods', id => 'warajimushi', parser => 'isopods',
-        desc  => '日本産ワラジムシ亜目種リスト',
-        files => [ 'List_species.html' ],
-        scope => 15, year => 2026,
-        edition => 'accessed',
-        sourcetitle  => '日本産ワラジムシ亜目種リスト',
-        sourceauthor => [ '唐沢 重考' ],
-        sourceurl    => 'https://www.warajimushi.com/Species/List_species.html',
-    },
-    {   dir => 'VascularPlants', id => 'ylist', parser => 'ylist',
-        desc  => 'YList 植物和名-学名インデックス',
-        files => [ '20210514YList_download.xlsx' ],
-        scope => 6, year => 2021,
-        edition => 'accessed',
-        sourcetitle  => 'YList',
-        sourceauthor => [ '米倉 浩司', '梶田 忠' ],
-        sourceurl    => 'http://ylist.info/',
-    },
-    {   dir => 'VascularPlants', id => 'ferngreenlist', parser => 'ferngreenlist',
-        desc  => 'FernGreenList ver. 2.0',
-        files => [ 'FernGreenListV2.0.csv' ],
-        scope => 8, year => 2023,
-        sourcetitle  => 'FernGreenList ver. 2.0',
-        sourceauthor => [ 'Atsushi Ebihara', 'Tao Fujiwara', 'Masayuki Takamiya', 'Motomi Ito', 'Tetsukazu Yahara' ],
-        sourceurl    => 'https://doi.org/10.57400/data.bnmnsbot.22696618',
-    },
-    {   dir => 'Bryophytes', id => 'hattoria7', parser => 'hattoria7',
-        desc  => '日本産蘚類チェックリスト (Hattoria 7)',
-        files => [ '7_9.pdf' ],
-        scope => 5, year => 2016,
-        sourcetitle  => 'A revised new catalog of the mosses of Japan',
-        sourceauthor => [ 'Tadashi Suzuki' ],
-        sourceurl    => 'https://doi.org/10.18968/hattoria.7.0_9',
-    },
-    {   dir => 'Bryophytes', id => 'hattoria9', parser => 'hattoria9',
-        desc  => '日本産タイ類・ツノゴケ類チェックリスト (Hattoria 9)',
-        files => [ '9_53.pdf' ],
-        scope => 5, year => 2018,
-        sourcetitle  => '日本産タイ類・ツノゴケ類チェックリスト，2018',
-        sourceauthor => [ '片桐 知之', '古木 達郎' ],
-        sourceurl    => 'https://doi.org/10.18968/hattoria.9.0_53',
-    },
-    {   dir => 'Lichens', id => 'lichenjapan', parser => 'lichens',
-        desc  => '日本産地衣類チェックリスト',
-        files => [ 'checklist.html' ],
-        scope => 8, year => 2026,
-        edition => 'accessed',
-        sourcetitle  => 'Checklist of Lichens and Allied Fungi of Japan',
-        sourceauthor => [ 'Lichenological Society of Japan' ],
-        sourceurl    => 'https://lichenjapan.jp/checklist/',
-    },
-    {   dir => 'Lichens', id => 'lichen_systematics', parser => 'lichen_systematics',
-        desc  => '日本産地衣類・関連菌類の高次分類群',
-        files => [ 'systematics.html' ],
-        scope => 8, year => 2026,
-        edition => 'accessed',
-        sourcetitle  => 'Classification of higher taxonomic groups of lichens and allied fungi in Japan',
-        sourceauthor => [ 'Lichenological Society of Japan' ],
-        sourceurl    => 'https://lichenjapan.jp/systematics/',
-    },
-    {   dir => 'Fungi', id => 'mycology_jp', parser => 'fungi',
-        desc  => '日本産菌類チェックリスト',
-        files => [ 'DB20200311.xlsx' ],
-        scope => 2, year => 2020,
-        edition => 'accessed',
-        sourcetitle  => '日本産菌類チェックリスト',
-        sourceauthor => [ '日本菌学会 データベース委員会' ],
-        sourceurl    => 'https://www.mycology-jp.org/html/checklist_clist.html',
-    },
-    {   dir => 'Seaweeds', id => 'seaweeds', parser => 'seaweeds',
-        desc  => '日本産海藻リスト',
-        files => [ 'Brown/*.html', 'Red/*.html', 'Green/*.html' ],
-        scope => 4, year => 2026,
-        edition => 'accessed',
-        sourcetitle  => '日本産海藻リスト',
-        sourceauthor => [ '鈴木 雅大' ],
-        sourceurl    => 'https://tonysharks.com/Seaweeds_list/Seaweed_list_top.html',
-    },
-    {   dir => 'Viruses', id => 'jsv_virus', parser => 'jsv_virus',
-        desc  => 'ウイルス種名・英名・和名対応リスト',
-        files => [ 'news241125.xlsx', 'news2411252.xlsx' ],
-        scope => 1, year => 2024,
-        edition => 'accessed',
-        sourcetitle  => 'ウイルス種名・英名・和名対応リスト',
-        sourceauthor => [ '日本ウイルス学会' ],
-        sourceurl    => 'https://jsv.umin.jp/news/news241125.html',
-    },
-);
+my @SOURCES = read_sources();
 
 #-----------------------------------------------------------------------------
 # CLI
@@ -952,6 +688,9 @@ sub merge_fingerprint {
         push @parts, join(':', $h->{src}{id}, (@st ? ($st[7], $st[9]) : ('', '')));
         # 出典の表記 (版・取得日) が変われば最終 TSV の6列目が変わる
         push @parts, display_title($h->{src});
+        # scope・year・出典は sources.tsv にあり、本スクリプトのダイジェストには
+        # 入らない。変われば衝突解決と出典3列が変わるので、定義そのものを入れる。
+        push @parts, flatten_value($h->{src});
     }
     for my $ref (File::Spec->catfile($basedir, 'AllTaxa', 'NameUsage.tsv'),
                  File::Spec->catfile($basedir, 'NCBITaxonomy', 'names.dmp')) {
@@ -1001,7 +740,7 @@ sub adopt {
 }
 
 # (a) scope が大きい (= より狭い分類群) / (b) 同じなら year が新しい /
-# (c) それも同じなら @SOURCES の定義順が先
+# (c) それも同じなら sources.tsv の定義順が先
 sub better_source {
     my ($a, $b) = @_;
     return 1 if $a->{src}{scope} > $b->{src}{scope};
@@ -1249,6 +988,51 @@ sub read_rank_def {
         exit 2;
     }
     return %rank;
+}
+
+# リポジトリルートの sources.tsv を読む (generate_tables.pl と共通の情報源の定義)。
+# 先頭の行が列名のヘッダ、'#' で始まる行と空行は読み飛ばす。配列の列は '|' で
+# 区切り、空欄の項目はハッシュに入れない。行の順番を定義順 (order) として持つ。
+sub read_sources {
+    my $path = File::Spec->catfile(dirname(abs_path($0)), 'sources.tsv');
+    open my $fh, '<', $path or do {
+        print STDERR "sources.tsv を読めません: $path: $!\n";
+        exit 2;
+    };
+    binmode $fh, ':encoding(UTF-8)';
+    my %is_array = map { $_ => 1 } qw(sourceauthor files unzip unzip_only);
+    my (@cols, @sources, %seen, @err);
+    while (my $line = <$fh>) {
+        $line =~ s/\r?\n\z//;
+        next if $line =~ /^#/ || $line !~ /\S/;
+        my @f = split /\t/, $line, -1;
+        unless (@cols) { @cols = @f; next }
+        my %src;
+        for my $i (0 .. $#cols) {
+            my $v = defined $f[$i] ? $f[$i] : '';
+            next unless length $v;
+            $src{ $cols[$i] } = $is_array{ $cols[$i] } ? [ split /\|/, $v ] : $v;
+        }
+        my $where = "$path 行 $.";
+        for my $c (qw(dir id parser scope year sourcetitle sourceauthor sourceurl files)) {
+            push @err, "$where: $c がありません" unless defined $src{$c};
+        }
+        push @err, "$where: scope が数字ではありません"
+            if defined $src{scope} && $src{scope} !~ /^\d+$/;
+        push @err, "$where: year が数字ではありません"
+            if defined $src{year} && $src{year} !~ /^\d+$/;
+        push @err, "$where: id が重複しています: $src{id}"
+            if defined $src{id} && $seen{ $src{id} }++;
+        $src{order} = scalar @sources;
+        push @sources, \%src;
+    }
+    close $fh;
+    push @err, "$path: ソースの定義がありません" unless @sources;
+    if (@err) {
+        print STDERR "$_\n" for @err;
+        exit 2;
+    }
+    return @sources;
 }
 
 # rank.def の階層名から rank 番号を引く。定義にない名前は実装のミスなので落とす。
@@ -4137,7 +3921,9 @@ sub parse_col {
     }
 
     my @out;
-    for my $id (keys %rec) {
+    # ID の順に回す。同じ組を複数の提供元が持つとき、統合では先に出た方の出典を
+    # 採るので、ハッシュの順に回すと実行のたびに出典が入れ替わる。
+    for my $id (sort keys %rec) {
         my ($sci, $crank, $status, $usrc, $parent) = @{ $rec{$id} };
         next unless length $sci;
         my ($rank, $subrank) = exists $COL_RANK{$crank}
@@ -4711,7 +4497,7 @@ sub external_validity {
 #   - VERSION と BUILDDATE (どちらかが変われば全て作り直す)
 #   - 本スクリプトの共通部分のダイジェスト (norm_sciname などを直したら全て作り直す)
 #   - そのソースのパーサ部分のダイジェスト (1つのパーサを直したらそれだけ作り直す)
-#   - @SOURCES のそのエントリ
+#   - sources.tsv のそのエントリ (共通部分から外れたので、ここで入れる)
 #   - 入力ファイルの一覧・サイズ・更新時刻 (生データが変わったら作り直す)
 #
 # 共通部分とパーサ部分は「#---」の罫線でセクションに切り、`sub parse_<名前>` を
