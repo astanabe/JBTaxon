@@ -1718,6 +1718,11 @@ sub norm_sciname {
     # 亜種の接続語は subsp. に統一する (ssp. と書く情報源がある)。
     $s =~ s/\bssp\.\s+/subsp. /g;
     $s = squeeze($s);
+    # 「Candidatus」は暫定分類の印であって名前の一部ではない (strip_candidatus)。
+    # 「Candidatus Carsonella ruddii」は「Carsonella ruddii」にする。外さないと
+    # 「名前らしいトークンだけ採る」規則が2語目の大文字始まりで打ち切るので、
+    # 印そのものが学名として出てしまう。
+    $s = strip_candidatus($s);
     return '' unless length $s;
     # 「Aedes (Stegomyia)」のように種小名を伴わない形は亜属そのものの名前。
     # 亜属の学名は命名規約上1語なので、括弧を外して亜属名だけにする。
@@ -4450,6 +4455,19 @@ sub strip_subgenus {
     return $name;
 }
 
+# 「Candidatus」は暫定分類の印であって学名の一部ではない (ICNP の規定)。付ける
+# ソースと付けないソースがあるので、入れると同じ分類群が別名として散らばる。
+# **NCBI Taxonomy は「Candidatus Carsonella ruddii」を scientific name、
+# 「Carsonella ruddii」を equivalent name として両方持っている**ので、参照データを
+# バイト列のまま走査する側でも同じ処理が要る (strip_subgenus と同じ事情)。
+# 印だけで名前が無いものは学名ではないので空文字を返す。
+sub strip_candidatus {
+    my ($name) = @_;
+    return $name unless defined $name && index($name, 'Candidatus') == 0;
+    $name =~ s/\ACandidatus\b[ \t]*//;
+    return $name;
+}
+
 # 参照データ (NameUsage.tsv / names.dmp) の学名を、こちらの学名と突き合わせられる
 # 形にする。norm_sciname と同じことをバイト列のまま行う (1千万行を decode すると
 # 遅いため)。ここを通さないと、雑種記号や亜属の書き方の違いで突き合わせが外れる。
@@ -4457,7 +4475,7 @@ sub ref_sciname_bytes {
     my ($name) = @_;
     return $name unless defined $name;
     $name =~ s/\xc3\x97/x/g;    # 雑種記号 × (UTF-8 で C3 97) は x に寄せる
-    return unify_ssp(space_digits_bytes(strip_subgenus($name)));
+    return unify_ssp(space_digits_bytes(strip_subgenus(strip_candidatus($name))));
 }
 
 # 半角数字の前後を空白で区切る。space_sci_digits と同じことを、バイト列のまま
