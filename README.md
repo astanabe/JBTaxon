@@ -366,6 +366,7 @@ sciname2japname.pl --db=jbtaxon_X_Y.sqlite3 'class:Aves,genus:Prunella'
 1つの名前は次の順で絞り込む。
 
 1. 階層名のrankが一致する行があればそれだけを使い、無ければrankを問わない (上位の名前を下の列へ埋めた入力があるため)。比べるのはrankの番号で、subrankは見ない。
+   - `japname2sciname.pl`で階層がspeciesのときに限り、種の行が無ければ亜種・変種・品種…と1段ずつ下げ、行のある最初の階層の行を使う (種として引いた和名が亜種の和名であることがあるため)。下げて引けたとき、クエリの`CONVERT`はその階層名で下位の分類群の学名を返し (`species:ヒメギフチョウ北海道亜種` → `subspecies:Luehdorfia puziloi yessoensis`)、クエリの`ADD`とファイルは種の学名に直して返す (`species:ヒメギフチョウ北海道亜種 (Luehdorfia puziloi)`)。
 2. 1列目の名前が有効名である行があればそれだけを使う。
 3. 系統: 同じ行 (クエリなら他の項目) の名前が、候補の組に結び付いたCatalogue of LifeとNCBI Taxonomyの節点 (`taxonlink`) の祖先にいくつ含まれるかを数え、最も多いものだけを残す。どれも1つも当たらなければ絞り込まない。和名は先に`japname2sciname`で学名に直してから比べる。
 4. 分類群ディレクトリの上下関係: 残った候補に上位のディレクトリのもの (`AllTaxa`に対しては他の全て、`Lichens`に対しては`Seaweeds`と`Fungi`) があれば、下位のディレクトリのものは捨てる。

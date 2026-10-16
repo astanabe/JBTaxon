@@ -19,7 +19,10 @@
 # 1つの名前の検索は次の順で候補を絞る。
 #   1. 1列目がその名前の行を集める。rank (番号で比べ、subrank は見ない) が
 #      一致する行があればそれだけ、無ければ rank を問わない (入力の階層の付け方が
-#      DB と同じとは限らず、上位の名前を下の列へ埋めた入力もあるため)
+#      DB と同じとは限らず、上位の名前を下の列へ埋めた入力もあるため)。
+#      和名から引く向きで階層が種のときだけ、種の行が無ければ亜種・変種・品種…と
+#      1段ずつ下げ、行のある最初の階層の行を使う (「ヒメギフチョウ北海道亜種」の
+#      ように、種として引かれた和名が実は亜種の和名であることがあるため)
 #   2. 1列目の名前が有効名である行があればそれだけ
 #   3. 系統: 同じ行 (クエリなら他の項目) の名前が、候補の組の節点 (taxonlink の
 #      colid / ncbiid) の祖先にいくつ含まれるかを数え、最大の候補だけを残す。
@@ -34,6 +37,11 @@
 #   ADD     ... 「元の名前 (引いた名前)」。当たらなければ元の名前のまま
 #   CONVERT ... 引いた名前だけ。当たらなければ空
 # 「unidentified ～」は検索しない (ADD は元のまま、CONVERT は空)。空のセルは空のまま。
+#
+# 種から下位の階層へ下げて引けたときは、クエリの CONVERT だけが下位の分類群の学名を
+# その階層名で返す (species:ヒメギフチョウ北海道亜種 → subspecies:Luehdorfia puziloi
+# yessoensis)。クエリの ADD とファイル (ADD・CONVERT) は、列や項目の階層に合わせて
+# 種の学名に直して返す (species:ヒメギフチョウ北海道亜種 (Luehdorfia puziloi))。
 
 use strict;
 use warnings;
@@ -172,6 +180,8 @@ sub is_unidentified {
 #-----------------------------------------------------------------------------
 my $dbh;
 my %RANK_NO;      # 階層名 → rank 番号
+my %RANK_LABEL;   # rank 番号 → 階層名 (rank.def でその番号の最初の名前)
+my $SPECIES_RANK; # 種の rank 番号
 my %STH;
 
 sub open_db {
@@ -198,10 +208,13 @@ sub open_db {
     die_io("DB に必要な表がありません (generate_database.pl の古い版で作った DB です): "
            . join(', ', @missing)) if @missing;
 
-    for my $r (@{ $dbh->selectall_arrayref('SELECT rank, name FROM rank') }) {
+    for my $r (@{ $dbh->selectall_arrayref('SELECT rank, name FROM rank ORDER BY rowid') }) {
         $RANK_NO{ $r->[1] } = $r->[0];
+        $RANK_LABEL{ $r->[0] } = $r->[1] unless exists $RANK_LABEL{ $r->[0] };
     }
     die_io("DB の rank 表が空です: $path") unless %RANK_NO;
+    $SPECIES_RANK = $RANK_NO{species};
+    die_io("DB の rank 表に species がありません: $path") unless defined $SPECIES_RANK;
 
     my ($key, $value, $valid) = @$T{qw(key value valid)};
     %STH = (
@@ -317,22 +330,32 @@ sub superiors {
 }
 
 # 1つの名前を引く。$rank は rank 番号、$hints は系統の手がかりの名前の並び
-# (同じ行の他の階層の名前)。有効名の並び (sort 済み・重複なし) を返す。
+# (同じ行の他の階層の名前)。有効名の並び (sort 済み・重複なし) の参照と、
+# 種から下位の階層へ下げて引けたときはその rank 番号 (下げていなければ undef) を返す。
 my %search_memo;
 
 sub search {
     my ($query, $rank, $hints) = @_;
     my $name = norm_query($query);
-    return () unless length $name;
+    return ([], undef) unless length $name;
     my @hint = grep { length && $_ ne $query && !is_unidentified($_) } @$hints;
     my %hseen;
     @hint = grep { !$hseen{$_}++ } @hint;
     my $memo = join "\x{1}", $name, $rank, sort @hint;
     return @{ $search_memo{$memo} } if $search_memo{$memo};
 
-    # 1. rank の一致する行を優先する
+    # 1. rank の一致する行を優先する。和名から引く向きで種のときは、種の行が
+    #    無ければ下位の階層へ1段ずつ下げる (行のある最初の階層で止める)
     my @cand = @{ lookup_rows($name) };
     my @same = grep { $_->[2] == $rank } @cand;
+    my $descended;
+    if (!@same && $T->{key} eq 'japname' && $rank == $SPECIES_RANK) {
+        my ($lower) = sort { $a <=> $b } grep { $_ > $rank } map { $_->[2] } @cand;
+        if (defined $lower) {
+            @same = grep { $_->[2] == $lower } @cand;
+            $descended = $lower;
+        }
+    }
     @cand = @same if @same;
 
     # 2. 1列目が有効名の行を優先する
@@ -365,8 +388,36 @@ sub search {
     # 5. 有効名を並べる
     my %seen;
     my @out = sort { $a cmp $b } grep { !$seen{$_}++ } map { $_->[0] } @cand;
-    $search_memo{$memo} = \@out;
-    return @out;
+    $search_memo{$memo} = [ \@out, $descended ];
+    return (\@out, $descended);
+}
+
+# 下位の階層へ下げて引いた学名を種の学名に直す (重複を除いて並べ直す)。
+sub to_species {
+    my ($names) = @_;
+    my %seen;
+    return [ sort { $a cmp $b } grep { !$seen{$_}++ }
+             map { my $sp = species_of_infra($_); defined $sp ? $sp : $_ } @$names ];
+}
+
+# 種内の下位分類群の学名から種の学名を取り出す (generate_tables.pl の
+# species_of_infra と同じ規則。「Acer pictum subsp. dissectum」→「Acer pictum」、
+# 「Luehdorfia puziloi yessoensis」→「Luehdorfia puziloi」)。取り出せなければ undef。
+my $INFRA_CONNECTOR = qr/(?:subsp|ssp|var|subvar|f|forma|morph|nothosubsp|nothovar)\./;
+
+sub species_of_infra {
+    my ($sci) = @_;
+    return undef unless defined $sci && $sci =~ /\A[A-Za-z .-]+\z/;
+    my @t = split / /, $sci;
+    for my $i (1 .. $#t - 1) {
+        return undef if $t[$i] eq 'x' && ($i >= 2 || $t[ $i + 1 ] =~ /\A[A-Z]/);
+    }
+    my $n = (@t > 1 && $t[1] eq 'x') ? 3 : 2;
+    return undef unless @t > $n;
+    return undef unless $t[0] =~ /\A[A-Z][a-z]+(?:-[a-z]+)*\z/;
+    return undef unless $t[ $n - 1 ] =~ /\A[a-z][a-z-]*\z/;
+    return undef unless $t[$n] =~ /\A(?:$INFRA_CONNECTOR|[a-z][a-z-]*\z)/;
+    return join ' ', @t[ 0 .. $n - 1 ];
 }
 
 # 1つのセルを出力の形にする
@@ -441,8 +492,15 @@ sub run_query {
     for my $i (0 .. $#items) {
         my ($label, $name) = @{ $items[$i] };
         my @hints = map { $items[$_][1] } grep { $_ != $i } 0 .. $#items;
-        my @found = is_unidentified($name) ? () : search($name, rank_number($label), \@hints);
-        push @out, "$label:" . render($name, \@found);
+        my ($found, $descended) = is_unidentified($name) ? ([], undef)
+                                : search($name, rank_number($label), \@hints);
+        # 下位の階層へ下げて引けたとき、CONVERT はその階層名で下位の分類群の
+        # 学名を返し、ADD は項目の階層 (種) に合わせて種の学名を返す
+        if (defined $descended) {
+            if ($mode eq 'CONVERT') { $label = $RANK_LABEL{$descended} }
+            else                    { $found = to_species($found) }
+        }
+        push @out, "$label:" . render($name, $found);
     }
     print join('; ', @out), "\n";
 }
@@ -519,9 +577,11 @@ sub run_file {
                 $stat{unidentified}++;
                 next;
             }
-            my @found = search($v, $col_rank{$i}, \@hints);
-            $f[$i] = render($v, \@found);
-            if (@found) { $stat{found}++ } else { $stat{miss}++; $miss{$v} = 1 }
+            # 下位の階層へ下げて引けたときは、列の階層 (種) に合わせて種の学名にする
+            my ($found, $descended) = search($v, $col_rank{$i}, \@hints);
+            $found = to_species($found) if defined $descended;
+            $f[$i] = render($v, $found);
+            if (@$found) { $stat{found}++ } else { $stat{miss}++; $miss{$v} = 1 }
         }
         print $ofh join("\t", @f), "\n";
     }
