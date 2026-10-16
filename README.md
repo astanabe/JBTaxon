@@ -142,7 +142,7 @@ yomi    japname
 
 - https://insect-web.rad.naro.go.jp/flame/tree
 
-#### クモ図鑑 (塩崎哲哉)
+#### クモ図鑑 (塩崎 哲哉)
 
 以下のURLのリンク先の和名索引と、和名索引のリンク先にある各種のページHTML自体がデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 

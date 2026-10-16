@@ -435,6 +435,7 @@ sub do_parse {
     return parse_herpetology($src, $paths)   if $p eq 'herpetology';
     return parse_jaflist($src, $paths)       if $p eq 'jaflist';
     return parse_naro($src, $paths)          if $p eq 'naro';
+    return parse_kumozukan($src, $paths)     if $p eq 'kumozukan';
     return parse_listmj($src, $paths)        if $p eq 'listmj';
     return parse_staphylinidae($src, $paths) if $p eq 'staphylinidae';
     return parse_aculeata($src, $paths)      if $p eq 'aculeata';
@@ -3565,6 +3566,97 @@ sub naro_rank {
     return (rk('subtribe'), 1)    if $name =~ /ina\z/;
     return (rk('family'), 1)      if $name =~ /idae\z/;
     return (rk($NARO_COL_RANK[$col]), $SUBRANK_INTERMEDIATE);
+}
+
+#-----------------------------------------------------------------------------
+# クモ図鑑 (HTML / 塩崎 哲哉)
+#
+# 和名索引 kumozukan/index_Japanesename.html (cp932) と、そこからリンクされた
+# 種のページ kumozukan/<名前>.html (UTF-8) を読む。
+#   - 索引は1行が1種で「和名 (種のページへのリンク) / 学名 / 科の和名 / 科の学名」
+#     の4列。未完成の行 (リンク先が「フォルダ名/ファイル名.html」) は読まない。
+#   - 種のページは見出しの <h1> が「和名<br><i>学名</i> 著者」で、続く表に
+#     「科名　family」「属名　genus」の行がある。属の和名は種のページにしかない。
+# どちらも HTML コメントの中に未公開の種や下書きがあるので、落としてから読む。
+#
+# 索引と種のページが食い違うときは種のページを採る (索引の「Piexippus paykulli」
+# 「ヒトリハエトリ（ヒトリコゲチャハエトリ）」)。種のページの欄が空のとき
+# (「ガザミグモ」の学名) と、種のページが無いとき (リンク切れ) は索引で補う。
+#
+# 科と属は種のページごとに書かれているので、綴りの誤りが混ざる。
+#   - 属の学名が種の学名の属名の先頭部分でしかないときは、種の学名から採る
+#     (「Cladothe」→「Cladothela」、「Pronoide」→「Pronoides」)
+#   - 科と属は和名ごとに、いちばん多くのページに書かれている学名を採る
+#     (「Lyniphiidae」「Araaneidae」は1ページにしか現れない)
+# 和名と学名の順序が逆の行 (「Atypidae ジグモ科」) があるので、階層語で終わる
+# 日本語を和名、大文字で始まるラテン語を学名として拾う。
+#-----------------------------------------------------------------------------
+sub parse_kumozukan {
+    my ($src, $paths) = @_;
+    my (%index, %page);
+    for my $path (@$paths) {
+        my ($name) = $path =~ m{([^/]+)\.html\z};
+        next unless defined $name;
+        my $html = read_html($path);
+        $html =~ s/<!--.*?-->//gs;
+        if ($name eq 'index_Japanesename') {
+            while ($html =~ m{<tr\b[^>]*>(.*?)</tr>}gsi) {
+                my @td = $1 =~ m{<td\b[^>]*>(.*?)</td>}gsi;
+                next unless @td >= 4;
+                my ($slug) = $td[0] =~ m{href\s*=\s*["']([a-z0-9_]+)/\1\.html["']}i;
+                next unless defined $slug;
+                my @v = map { squeeze(fixup_chars(html_text($_))) } @td[0 .. 3];
+                $index{$slug} = { jap => $v[0], sci => $v[1], fam => "$v[2] $v[3]" };
+            }
+            next;
+        }
+        my ($h1) = $html =~ m{<h1\b[^>]*>(.*?)</h1>}si;
+        next unless defined $h1;
+        my ($jap, $rest) = split m{<br\s*/?>}i, $h1, 2;
+        my ($sci) = (defined $rest ? $rest : '') =~ m{<span\b[^>]*italic[^>]*>(.*?)</span>}si;
+        my ($fam) = $html =~ m{科名.*?</td>\s*<td\b[^>]*>(.*?)</td>}si;
+        my ($gen) = $html =~ m{属名.*?</td>\s*<td\b[^>]*>(.*?)</td>}si;
+        $page{$name} = { map { $_->[0] => squeeze(fixup_chars(html_text($_->[1]))) }
+                         [ jap => $jap ], [ sci => $sci ], [ fam => $fam ], [ gen => $gen ] };
+    }
+
+    my (@out, %vote);
+    for my $slug (sort(uniq(keys %index, keys %page))) {
+        my $pg = $page{$slug}  || {};
+        my $ix = $index{$slug} || {};
+        my $pick = sub {
+            my ($k) = @_;
+            return length($pg->{$k} // '') ? $pg->{$k} : ($ix->{$k} // '');
+        };
+        my ($jap, $sci) = ($pick->('jap'), $pick->('sci'));
+        next unless length $sci;
+        add_pair(\@out, $jap, $sci, undef, undef);
+        my ($genus) = $sci =~ /\A([A-Z][a-z]+)\b/;
+
+        # 科は種のページ、無ければ索引。和名と学名はそれぞれ欄の中から拾う。
+        for my $fam (grep { length } $pg->{fam} // '', $ix->{fam} // '') {
+            my ($fj) = $fam =~ /(\S+科)(?:\s|\z)/;
+            my ($fs) = $fam =~ /\b([A-Z][a-z]+dae)\b/;
+            next unless defined $fj && defined $fs;
+            $vote{family}{$fj}{$fs}++;
+            last;
+        }
+        my $gen = $pg->{gen} // '';
+        my ($gj) = $gen =~ /(\S+属)(?:\s|\z)/;
+        my ($gs) = $gen =~ /\b([A-Z][a-z]+)\b/;
+        next unless defined $gj && $gj ne '属';
+        $gs = $genus if defined $genus
+                     && (!defined $gs || (length $gs < length $genus && index($genus, $gs) == 0));
+        $vote{genus}{$gj}{$gs}++ if defined $gs;
+    }
+    for my $rank (qw(family genus)) {
+        for my $jap (sort keys %{ $vote{$rank} || {} }) {
+            my $v = $vote{$rank}{$jap};
+            my ($sci) = sort { $v->{$b} <=> $v->{$a} || $a cmp $b } keys %$v;
+            add_pair(\@out, $jap, $sci, rk($rank), 1);
+        }
+    }
+    return \@out;
 }
 
 #-----------------------------------------------------------------------------

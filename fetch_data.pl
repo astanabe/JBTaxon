@@ -39,6 +39,7 @@ my $NARO_BASE    = 'https://insect-web.rad.naro.go.jp/search/basic';
 my $NARO_QUERY   = 'mon=1&kou=1&moku=1&ka=1&kazoku=1&zoku=1&syu=1'
                  . '&amon=1&akou=1&amoku=1&aka=1&azoku=1&asyu=1&lang=ja';
 my $SEAWEED_BASE = 'https://tonysharks.com/Seaweeds_list/';
+my $KUMOZUKAN_BASE = 'https://araneae.web.fc2.com/kumozukan/';
 # Wikidata は WDQS (query.wikidata.org) だと 60 秒制限で完走しないので QLever を使う。
 # クエリは AllTaxa/wikidata.rq (リポジトリで追跡している) を POST する。
 my $QLEVER_URL   = 'https://qlever.dev/api/wikidata';
@@ -47,12 +48,13 @@ my $GSHEET_BASE  = 'https://docs.google.com/spreadsheets/d';
 #-----------------------------------------------------------------------------
 # ソース定義テーブル
 #
-# type は以下の5種:
-#   file    ... 固定 URL の列挙
-#   naro    ... NARO 昆虫DB search/basic のページング
-#   seaweed ... 海藻リストのリンク抽出巡回
-#   sparql  ... SPARQL クエリファイルを POST して結果を保存する
-#   manual  ... 自動取得せず、未配置を案内するだけ
+# type は以下の6種:
+#   file      ... 固定 URL の列挙
+#   naro      ... NARO 昆虫DB search/basic のページング
+#   seaweed   ... 海藻リストのリンク抽出巡回
+#   kumozukan ... クモ図鑑の和名索引からのリンク抽出巡回
+#   sparql    ... SPARQL クエリファイルを POST して結果を保存する
+#   manual    ... 自動取得せず、未配置を案内するだけ
 #
 # file には untar を添えられる。[書庫名, 展開後に存在するはずのファイル] を書くと
 # 取得直後に tar で展開する。手動配置分の zip は fetch_data.pl の実行後に置かれる
@@ -200,6 +202,11 @@ my @SOURCES = (
         category => 'BB00006378',
         prefix   => 'naro_araneae',
         count    => '9',
+    },
+    {   dir  => 'Spiders',
+        type => 'kumozukan',
+        desc => 'クモ図鑑 (和名索引と種のページ)',
+        count => '549',
     },
     {   dir  => 'Nematodes',
         type => 'naro',
@@ -359,6 +366,7 @@ for my $src (@selected) {
     if    ($src->{type} eq 'file')    { do_file($src) }
     elsif ($src->{type} eq 'naro')    { do_naro($src) }
     elsif ($src->{type} eq 'seaweed') { do_seaweed($src) }
+    elsif ($src->{type} eq 'kumozukan') { do_kumozukan($src) }
     elsif ($src->{type} eq 'sparql')  { do_sparql($src) }
     else { die "未知の type です: $src->{type}\n" }
 }
@@ -579,6 +587,43 @@ sub do_seaweed {
 }
 
 #-----------------------------------------------------------------------------
+# type: kumozukan (和名索引からのリンク抽出巡回)
+#
+# 和名索引 index_Japanesename.html から種のページ (<名前>/<名前>.html) へのリンクを
+# 拾い、Spiders/kumozukan/<名前>.html に保存する。索引は Spiders/kumozukan/
+# index_Japanesename.html。HTML コメントの中にも未公開のページへのリンクが
+# 20件ほどあるので、コメントを落としてから拾う。
+# 存在しないページに FC2 は 302 でエラーページ (404) へ転送するが、curl は
+# --location --fail なのでそのまま失敗になる。
+#-----------------------------------------------------------------------------
+sub do_kumozukan {
+    my ($src) = @_;
+    my $dir   = File::Spec->catdir($basedir, $src->{dir}, 'kumozukan');
+    my $index = File::Spec->catfile($dir, 'index_Japanesename.html');
+    my $html  = fetch_text($KUMOZUKAN_BASE . 'index_Japanesename.html', $index);
+    unless (defined $html) {
+        logmsg('info', '和名索引が手元にないため巡回できません');
+        return;
+    }
+    $html =~ s/<!--.*?-->//gs;
+
+    my @names;
+    my %seen;
+    while ($html =~ m{href\s*=\s*["']([a-z0-9_]+)/\1\.html["']}gi) {
+        push @names, $1 unless $seen{$1}++;
+    }
+    unless (@names) {
+        record_failure($KUMOZUKAN_BASE . 'index_Japanesename.html', relname($index),
+                       '種のページへのリンクを抽出できません');
+        return;
+    }
+    logmsg('info', sprintf('種のページ %d件', scalar @names));
+    for my $name (sort @names) {
+        fetch("$KUMOZUKAN_BASE$name/$name.html", File::Spec->catfile($dir, "$name.html"));
+    }
+}
+
+#-----------------------------------------------------------------------------
 # type: sparql (SPARQL クエリファイルを POST して結果を保存する)
 #
 # クエリファイルはリポジトリで追跡しているのでダウンロードしない。
@@ -670,6 +715,9 @@ sub list_sources {
         elsif ($src->{type} eq 'seaweed') {
             printf "  Brown|Red|Green|Numbers/*.html <- %s\n", $SEAWEED_BASE;
         }
+        elsif ($src->{type} eq 'kumozukan') {
+            printf "  kumozukan/index_Japanesename.html, kumozukan/<名前>.html <- %s\n", $KUMOZUKAN_BASE;
+        }
         elsif ($src->{type} eq 'sparql') {
             printf "  %s <- %s (POST %s)\n", $src->{out}, $src->{url}, $src->{query};
         }
@@ -701,7 +749,7 @@ sub usage {
 
 JBTaxon の生データファイルを分類群ごとのディレクトリへダウンロードします。
 全ての取得は curl で行い、ダウンロードとダウンロードの間に必ず${SLEEP_SECONDS}秒空けます
-(この間隔は変更できません)。全件取得の所要時間は約47分です。
+(この間隔は変更できません)。全件取得の所要時間は約93分です。
 
 オプション:
   --dir=PATH    出力先のベースディレクトリ (既定: スクリプトのあるディレクトリ)
