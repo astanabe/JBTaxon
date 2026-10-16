@@ -1,8 +1,17 @@
 # ---------------------------------------------------------------------------
-# 生物の学名・和名対応表を Wikidata から抽出する
+# 生物の学名・和名対応表と、QID と NCBI Taxonomy の taxid の対応を
+# Wikidata から抽出する
 #
-#   出力  : 1 分類群 1 行
-#   件数  : 約 44,000 行 / 約 5 MB（2026-09 時点）
+#   2つの枝の UNION になっている。
+#     枝1 : 和名ラベルのある分類群（学名・和名・階級・親・別名・通称・taxid）
+#           generate_tables.pl が和名の表に使う。
+#     枝2 : P685（NCBI taxid）を持つ全項目（和名を問わない。sci と ja は空）
+#           generate_tables.pl が QID と taxid の対応表
+#           (AllTaxa/qid2ncbi_VERSION_BUILDDATE.tsv) を作るのに使う。
+#   両方の枝に出る項目は 2 行になる（対応表を作るときに重複を除く）。
+#
+#   出力  : 枝1 は 1 分類群 1 行、枝2 は 1 項目 1 行
+#   件数  : 枝1 約 44,000 行 + 枝2 約 631,000 行 / 約 19 MB / 約 10 秒（2026-10 時点）
 #   実行  : curl -s -X POST https://qlever.dev/api/wikidata \
 #             -H "Content-Type: application/sparql-query" \
 #             -H "Accept: text/csv" \
@@ -28,35 +37,49 @@ SELECT ?qid ?sci ?ja
        (GROUP_CONCAT(DISTINCT ?parent;  SEPARATOR="|") AS ?parents)
        (GROUP_CONCAT(DISTINCT ?alias;   SEPARATOR="|") AS ?aliases)
        (GROUP_CONCAT(DISTINCT ?common;  SEPARATOR="|") AS ?commons)
+       (GROUP_CONCAT(DISTINCT ?ncbi;    SEPARATOR="|") AS ?ncbis)
 WHERE {
-  # --- 必須: 学名と和名 -----------------------------------------------------
-  ?item wdt:P225 ?sci .                               # P225 分類群名（学名）
-  ?item rdfs:label ?ja . FILTER(LANG(?ja) = "ja")     # 日本語ラベル＝和名
+  {
+    # === 枝1: 和名ラベルのある分類群 ========================================
 
-  # 日本語ラベル欄にラテン語名だけが入っている項目を除外
-  # （例: "Aname vernonorum", "Lilium albanicum"）。約 950 件が落ちる。
-  FILTER(REGEX(?ja, "[\\p{Hiragana}\\p{Katakana}\\p{Han}]"))
+    # --- 必須: 学名と和名 ---------------------------------------------------
+    ?item wdt:P225 ?sci .                             # P225 分類群名（学名）
+    ?item rdfs:label ?ja . FILTER(LANG(?ja) = "ja")   # 日本語ラベル＝和名
+
+    # 日本語ラベル欄にラテン語名だけが入っている項目を除外
+    # （例: "Aname vernonorum", "Lilium albanicum"）。約 950 件が落ちる。
+    FILTER(REGEX(?ja, "[\\p{Hiragana}\\p{Katakana}\\p{Han}]"))
+
+    # --- 分類階級 -----------------------------------------------------------
+    OPTIONAL {
+      ?item wdt:P105 ?rank_item .                     # P105 分類階級
+      BIND(STRAFTER(STR(?rank_item), "http://www.wikidata.org/entity/") AS ?rank)
+      OPTIONAL { ?rank_item rdfs:label ?rank_ja . FILTER(LANG(?rank_ja) = "ja") }
+    }
+
+    # --- 親分類群（QID のみ。系統の手がかりに使う） -------------------------
+    OPTIONAL {
+      ?item wdt:P171 ?parent_item .                   # P171 親分類群
+      BIND(STRAFTER(STR(?parent_item), "http://www.wikidata.org/entity/") AS ?parent)
+    }
+
+    # --- 別名・通称（表記揺れの供給源。未フィルタ） -------------------------
+    OPTIONAL { ?item skos:altLabel ?alias  . FILTER(LANG(?alias)  = "ja") }
+    OPTIONAL { ?item wdt:P1843    ?common . FILTER(LANG(?common) = "ja") }
+
+    # --- NCBI Taxonomy の taxid（系統の手がかりに使う） ---------------------
+    OPTIONAL { ?item wdt:P685 ?ncbi }                 # P685 NCBI taxonomy ID
+  }
+  UNION
+  {
+    # === 枝2: NCBI taxid を持つ全項目（和名を問わない） =====================
+    ?item wdt:P685 ?ncbi .
+  }
 
   BIND(STRAFTER(STR(?item), "http://www.wikidata.org/entity/") AS ?qid)
-
-  # --- 分類階級 -------------------------------------------------------------
-  OPTIONAL {
-    ?item wdt:P105 ?rank_item .                       # P105 分類階級
-    BIND(STRAFTER(STR(?rank_item), "http://www.wikidata.org/entity/") AS ?rank)
-    OPTIONAL { ?rank_item rdfs:label ?rank_ja . FILTER(LANG(?rank_ja) = "ja") }
-  }
-
-  # --- 親分類群（QID のみ。不要なら OPTIONAL ブロックごと削除可） -----------
-  OPTIONAL {
-    ?item wdt:P171 ?parent_item .                     # P171 親分類群
-    BIND(STRAFTER(STR(?parent_item), "http://www.wikidata.org/entity/") AS ?parent)
-  }
-
-  # --- 別名・通称（表記揺れの供給源。未フィルタ） ---------------------------
-  OPTIONAL { ?item skos:altLabel ?alias  . FILTER(LANG(?alias)  = "ja") }
-  OPTIONAL { ?item wdt:P1843    ?common . FILTER(LANG(?common) = "ja") }
 }
 # GROUP BY を ?qid ?sci ?ja に絞ることで 1 分類群 1 行にする。
 # これをしないと P171 を複数持つ項目（約 1,400 件）等で行が重複する。
+# 枝2 の行は ?sci と ?ja が未束縛なので、項目ごとに 1 行にまとまる。
 GROUP BY ?qid ?sci ?ja
 ORDER BY ?qid

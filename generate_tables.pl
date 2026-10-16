@@ -8,9 +8,10 @@
 # sciname2japname_VERSION_BUILDDATE.tsv を書き出す。
 #
 # 処理は2段構えになっている。
-#   第1段 ... ソースごとに個別のパーサを走らせ、6列の中間 TSV を
+#   第1段 ... ソースごとに個別のパーサを走らせ、12列の中間 TSV を
 #             <分類群>/.jbtaxon/<ソースID>.tsv に書く
-#   第2段 ... ディレクトリ内の中間 TSV を統合し (衝突解決)、最終2ファイルを書く
+#   第2段 ... ディレクトリ内の中間 TSV を統合し (衝突解決)、最終2ファイルと
+#             系統の手がかり (taxonhint_VERSION_BUILDDATE.tsv) を書く
 #
 # 衝突解決は2系統に分かれる。混同してはならない (CLAUDE.md 参照)。
 #   どの名前を採用するか   ... より狭い分類群のソースを優先し、次いで新しい方
@@ -123,7 +124,8 @@ my %JAPNAME_DROP = map { $_ => 1 }
 
 # 「階層レベルを示す単語」と、それが表す rank。README の「rank・subrankについて」
 # に挙がっている階層名の日本語を写したもの。rank 値そのものは rank.def が正だが、
-# この日本語の語は README にしかない。
+# この日本語の語は README にしかない。tribe (21) と subtribe (22) は植物で
+# 「連」「亜連」と呼ぶので両方を持つ (「キク連」「リンドウ亜連」)。
 #   - 種より上の語は、高次分類群の和名が有効名かどうかの判定に使う (README の規定)
 #   - rank との突き合わせにも使う。和名の接尾辞が示す階層と学名の rank が
 #     3段以上ずれている組は、和名と学名が別の分類群を指しているので落とす
@@ -132,7 +134,8 @@ my %JAP_RANK_WORD = (
     '上門' => 4, '門' => 5, '亜門' => 6, '上綱' => 7, '綱' => 8, '亜綱' => 9,
     '下綱' => 10, 'コホート' => 11, 'サブコホート' => 12, '上目' => 13, '目' => 14,
     '亜目' => 15, '下目' => 16, '小目' => 17, '上科' => 18, '科' => 19, '亜科' => 20,
-    '族' => 21, '亜族' => 22, '属' => 23, '亜属' => 24, '節' => 25, '亜節' => 26,
+    '族' => 21, '亜族' => 22, '連' => 21, '亜連' => 22,
+    '属' => 23, '亜属' => 24, '節' => 25, '亜節' => 26,
     '列' => 27, '種群' => 28, '種亜群' => 29, '種' => 30, '亜種' => 31,
     '変種' => 32, '品種' => 33, '株' => 35,
 );
@@ -458,10 +461,13 @@ sub do_parse {
 #-----------------------------------------------------------------------------
 # 中間 TSV
 #
-# 内部形式は6列。この1レコードから両方の最終テーブルを導ける。
+# 内部形式は12列。この1レコードから両方の最終テーブルを導ける。
 #   japname / sciname / japvalid / scivalid / rank / subrank / nos2j
-#   sourcetitle / sourceauthor / sourceurl
+#   sourcetitle / sourceauthor / sourceurl / ids / anc
 # japname か sciname が空のレコードはどちらの表にも寄与しないので落とす。
+#
+# japvalid はソースの判定のまま。和名が有効名の形をしているか (README の規定) は
+# 統合の段で見る (merge_directory)。
 #
 # nos2j は「有効な和名だが sciname2japname の2列目には使わない」印。
 # JAFList の「サツキマス・アマゴ」のように、分割前の和名を代表として残しつつ
@@ -470,10 +476,28 @@ sub do_parse {
 # 末尾の出典3列はレコード単位の上書き。空なら @SOURCES の値を使う。
 # Catalogue of Life はエントリごとに sourceID を持ち、その提供元を出典にするため
 # ここに入れる。他の情報源はすべて空。
+#
+# ids と anc は系統の手がかりで、どちらも '|' 区切り (空でもよい)。統合の段が
+# taxonhint_VERSION_BUILDDATE.tsv に書き出し、第3段が CoL / NCBI の体系の節点に
+# 結び付けるのに使う。
+#   ids ... 「col:<ID>」「wikidata:<QID>」「ncbi:<taxid>」「wdparent:<QID>」
+#   anc ... 祖先の学名
 #-----------------------------------------------------------------------------
 sub intermediate_path {
     my ($src) = @_;
     return File::Spec->catfile($basedir, $src->{dir}, $WORKDIR_NAME, "$src->{id}.tsv");
+}
+
+# Wikidata の QID と NCBI taxid の対応 (和名の無い項目も含む全件)。parse_wikidata が
+# 中間 TSV と一緒に書き、統合の段が qid2ncbi_VERSION_BUILDDATE.tsv として出す。
+sub qid2ncbi_path {
+    my ($src) = @_;
+    return File::Spec->catfile($basedir, $src->{dir}, $WORKDIR_NAME, "$src->{id}.qid2ncbi.tsv");
+}
+
+sub final_path {
+    my ($dir, $kind) = @_;
+    return File::Spec->catfile($basedir, $dir, "${kind}_${VERSION}_${BUILDDATE}.tsv");
 }
 
 sub write_intermediate {
@@ -489,16 +513,17 @@ sub write_intermediate {
     my $n = 0;
     my %seen;
     for my $r (@$records) {
-        my ($jap, $sci, $jv, $sv, $rank, $subrank, $nos2j, $st, $sa, $su) = @$r;
+        my ($jap, $sci, $jv, $sv, $rank, $subrank, $nos2j, $st, $sa, $su, $ids, $anc) = @$r;
         next unless defined $jap && defined $sci && length $jap && length $sci;
         $rank    = 0 unless defined $rank;
         $subrank = 1 unless defined $subrank && $subrank >= 1;
         $jv = $jv ? 1 : 0;
         $sv = $sv ? 1 : 0;
         $nos2j = $nos2j ? 1 : 0;
-        $_ = defined $_ ? $_ : '' for ($st, $sa, $su);
-        s/[\t\n\r]+/ /g for ($st, $sa, $su);
-        my $line = join("\t", $jap, $sci, $jv, $sv, $rank, $subrank, $nos2j, $st, $sa, $su);
+        $_ = defined $_ ? $_ : '' for ($st, $sa, $su, $ids, $anc);
+        s/[\t\n\r]+/ /g for ($st, $sa, $su, $ids, $anc);
+        my $line = join("\t", $jap, $sci, $jv, $sv, $rank, $subrank, $nos2j, $st, $sa, $su,
+                        $ids, $anc);
         next if $seen{$line}++;
         print $fh "$line\n";
         $n++;
@@ -517,7 +542,7 @@ sub read_intermediate {
         chomp $line;
         next unless length $line;
         my @f = split /\t/, $line, -1;
-        next unless @f == 10;
+        next unless @f == 12;
         push @out, \@f;
     }
     close $fh;
@@ -541,6 +566,8 @@ sub cleanup_intermediates {
         unlink $p if -e $p;
         unlink "$p.fp" if -e "$p.fp";
         unlink "$p.rejected" if -e "$p.rejected";
+        my $q = qid2ncbi_path($src);
+        unlink $q if -e $q;
         $dirs{ dirname($p) } = 1;
         unlink File::Spec->catfile(dirname($p), 'merge.fp');
     }
@@ -548,11 +575,14 @@ sub cleanup_intermediates {
 }
 
 #-----------------------------------------------------------------------------
-# 第2段: ディレクトリ内の中間 TSV を統合して最終2ファイルを書く
+# 第2段: ディレクトリ内の中間 TSV を統合して最終ファイルを書く
 #
 # 衝突解決は2系統。CLAUDE.md の規定どおり混同しないよう別々の表に持つ。
 #   %adopt_j2s / %adopt_s2j ... 対応付け。狭さ優先 → 次いで新しさ → 定義順
 #   %validity               ... 有効性。新しさのみ (狭さは考慮しない)
+#
+# 最終ファイルは japname2sciname / sciname2japname / taxonhint の3つ。
+# Wikidata の QID と NCBI taxid の対応を持つディレクトリ (AllTaxa) は qid2ncbi も書く。
 #-----------------------------------------------------------------------------
 sub merge_directory {
     my ($dir, $sources, $colv, $ncbiv, $accepted) = @_;
@@ -567,13 +597,14 @@ sub merge_directory {
         logmsg('info', "$dir: 中間 TSV がないので統合をスキップします");
         return;
     }
+    my @q2n = grep { -e $_ } map { qid2ncbi_path($_->{src}) } @have;
 
     # 中間 TSV も参照データも変わっていなければ統合ごと飛ばす。
     my $mfp  = merge_fingerprint($dir, \@have);
     my $mpath = File::Spec->catfile($basedir, $dir, $WORKDIR_NAME, 'merge.fp');
-    my @finals = map { File::Spec->catfile($basedir, $dir, "${_}_${VERSION}_${BUILDDATE}.tsv") }
-                 ('japname2sciname', 'sciname2japname');
-    if (!$force && (grep { -e $_ } @finals) == 2 && read_fingerprint($mpath) eq $mfp) {
+    my @finals = map { final_path($dir, $_) }
+                 ('japname2sciname', 'sciname2japname', 'taxonhint', (@q2n ? 'qid2ncbi' : ()));
+    if (!$force && !(grep { !-e $_ } @finals) && read_fingerprint($mpath) eq $mfp) {
         logmsg('skip', "$dir: 出力は最新です");
         return;
     }
@@ -584,12 +615,17 @@ sub merge_directory {
     for my $h (@have) {
         my $src = $h->{src};
         for my $r (read_intermediate($h->{path})) {
-            my ($jap, $sci, $jv, $sv) = @$r;
+            my ($jap, $sci, $jv, $sv, $rank) = @$r;
+            # 有効名の形をしていない和名はシノニム扱いにする (README の規定)。
+            # 中間 TSV の japvalid はソースの判定なので、救済の段で使うために
+            # 控えておき、レコードには形の判定を重ねた値を入れる。
+            my $srcjv = $jv;
+            $jv = $r->[2] = ($jv && japname_valid_form($jap, $rank)) ? 1 : 0;
             # 和名は「(1) より狭い分類群のソース (2) 次いでより新しいソース」、
             # 学名は「より新しいソースか」だけで決める (README の規定)。
             update_validity(\%validity, "j\t$jap", $jv, $src, $h->{order}, 1);
             update_validity(\%validity, "s\t$sci", $sv, $src, $h->{order}, 0);
-            push @records, [ $r, $h ];
+            push @records, [ $r, $h, $srcjv ];
         }
     }
 
@@ -640,7 +676,19 @@ sub merge_directory {
     # なり、3つの型が1種にまとめられた Dyorhopapillomavirus 1 は和名を3つ持つ)。
     # 和名と学名が同じ行だけを1つにまとめ、そのときどのソースの出典を出すかを
     # 狭さ→新しさ→定義順で決める。
-    my (%adopt_j2s, %adopt_s2j);
+    # 最終2表に載った組 (和名と学名) ごとに、その組を生んだ全ソースのレコードの
+    # 系統の手がかりを集める (taxonhint)。差し替え先の行には元のレコードの手がかりを付ける。
+    my (%adopt_j2s, %adopt_s2j, %hint);
+    my $take = sub {
+        my ($table, $key, $cand, $r) = @_;
+        adopt($table, $key, $cand);
+        my $e = $hint{"$cand->{jap}\t$cand->{sci}"}{ $cand->{src}{id} } ||= [ [], {} ];
+        for my $i (0, 1) {
+            for my $v (split /\|/, $r->[10 + $i]) {
+                push @{ $e->[0][$i] }, $v if length $v && !$e->[1]{"$i\t$v"}++;
+            }
+        }
+    };
     for my $e (@records) {
         my ($r, $h) = @$e;
         my ($jap, $sci, $jv, $sv, $rank, $subrank, $nos2j, $st, $sa, $su) = @$r;
@@ -649,8 +697,8 @@ sub merge_directory {
         my $cand = { sci => $sci, jap => $jap, rank => $rank, subrank => $subrank,
                      src => $h->{src}, order => $h->{order},
                      st => $st, sa => $sa, su => $su };
-        adopt(\%adopt_j2s, "$jap\t$sci", $cand) if $sv && $svalid;
-        adopt(\%adopt_s2j, "$sci\t$jap", $cand) if $jv && $jvalid && !$nos2j;
+        $take->(\%adopt_j2s, "$jap\t$sci", $cand, $r) if $sv && $svalid;
+        $take->(\%adopt_s2j, "$sci\t$jap", $cand, $r) if $jv && $jvalid && !$nos2j;
         next unless $sv && !$svalid && exists $fixed{$sci};
         my ($aname, $arank) = @{ $fixed{$sci} };
         my $fix = { %$cand, sci => $aname };
@@ -661,22 +709,156 @@ sub merge_directory {
         # いるため、同じ学名を別の階層で載せているソースがあるとすり抜ける
         # (「セドイデス節」は海藻リストが節、Catalogue of Life が亜科)。
         next if rank_word_far($jap, $fix->{rank});
-        adopt(\%adopt_j2s, "$jap\t$aname", $fix);
+        $take->(\%adopt_j2s, "$jap\t$aname", $fix, $r);
         next unless $jv && $jvalid && !$nos2j;
         # 和名が元の学名の音写でしかないなら、差し替え先の有効和名にはしない。
         # 「ヒアシンス科」は Hyacinthaceae の音写であって Asparagaceae の和名
         # ではないので、「Asparagaceae -> ヒアシンス科」の行は出さない。
         # japname2sciname には残るので、読みから有効名は引ける。
         next if sciname_translit($jap, $sci) && !sciname_translit($jap, $aname);
-        adopt(\%adopt_s2j, "$aname\t$jap", $fix);
+        $take->(\%adopt_s2j, "$aname\t$jap", $fix, $r);
     }
 
-    my $j2s = write_final($dir, 'japname2sciname', \%adopt_j2s, \%validity, 'j');
+    my $rescued = rescue_japnames($dir, \@records, \%validity, \%fixed, $accepted,
+                                  \%adopt_s2j, $take);
+
+    my $j2s = write_final($dir, 'japname2sciname', \%adopt_j2s, \%validity, 'j', $rescued);
     my $s2j = write_final($dir, 'sciname2japname', \%adopt_s2j, \%validity, 's');
+    my $nh  = write_taxonhint($dir, \%hint, { map { $_->{src}{id} => $_->{order} } @have });
+    my $nq  = @q2n ? write_qid2ncbi($dir, \@q2n) : 0;
     write_fingerprint($mpath, $mfp);
     $n_written += $j2s + $s2j;
-    logmsg('merge', sprintf('%s: %d ソース / %d レコード -> japname2sciname %d 行 / sciname2japname %d 行',
-                            $dir, scalar @have, scalar @records, $j2s, $s2j));
+    logmsg('merge', sprintf('%s: %d ソース / %d レコード -> japname2sciname %d 行 / sciname2japname %d 行'
+                            . ' / taxonhint %d 行%s',
+                            $dir, scalar @have, scalar @records, $j2s, $s2j, $nh,
+                            (@q2n ? " / qid2ncbi $nq 行" : '')));
+}
+
+# 有効な和名のない学名の救済。
+#
+# 高次分類群の和名には「哺乳綱」「脊索動物門」のようにカタカナを含まないものが
+# あり、有効名の形 (カナ名＋階層語) を満たさないのでシノニムになる。そのため
+# Mammalia や Chordata は sciname2japname に行を持たず、学名から和名を引けない。
+# そこで、**最終の学名に有効な和名が1つも無いときに限り**、末尾が階層語
+# (「連」「亜連」「種」「種群」「種亜群」を含む全て) の和名を有効名として採る。
+# カナ名の要件は外すが、階層語が末尾に付くことは必須。
+#
+# 候補は2段に分ける。学名ごとに、段1があれば段1だけ、無ければ段2を採る。
+#   段1 ... ソースが有効とした和名 (形を満たさないだけのもの)
+#   段2 ... ソースがシノニムとした和名 (Wikidata の P1843、括弧内の別名、
+#           異名列など。Actinopterygii は代表の「条鰭類」に階層語が無いので、
+#           P1843 の「条鰭綱」で救済される)
+#
+# 最終の学名は第2周と同じ規則で決める (元の学名が有効ならそれ、Catalogue of Life で
+# 有効名に差し替えるならその先)。救済した和名を2列目とする sciname2japname の行を、
+# 最終の学名と、それを指す学名シノニム (元のレコードの学名) の両方から出す。
+# 有効性の表は和名単位なので、和名単位で格上げすると無関係な学名の行まで有効に
+# なってしまう。そこで japname2sciname の有効性は組単位で上書きする
+# (戻り値の "和名<TAB>学名" の表。write_final が使う)。
+sub rescue_japnames {
+    my ($dir, $records, $validity, $fixed, $accepted, $adopt_s2j, $take) = @_;
+    my %has_s2j;
+    $has_s2j{ substr($_, 0, index($_, "\t")) } = 1 for keys %$adopt_s2j;
+
+    my %cand;    # 学名 -> 段 -> 和名 -> 1
+    for my $e (@$records) {
+        my ($r, $h, $srcjv) = @$e;
+        my ($jap, $sci, $jv, $sv, $rank, $subrank, $nos2j) = @$r;
+        next if $nos2j || !$sv;
+        next unless $jap =~ /(?:$JAP_RANK_WORD_RE)\z/;
+        my ($f, $frank);
+        if (valid_of($validity, "s\t$sci")) { ($f, $frank) = ($sci, $rank) }
+        elsif (exists $fixed->{$sci}) {
+            ($f, $frank) = @{ $fixed->{$sci} };
+            $frank = $rank unless defined $frank;
+            next if sciname_translit($jap, $sci) && !sciname_translit($jap, $f);
+        }
+        else { next }
+        next if $has_s2j{$f};
+        next if rank_word_far($jap, $frank);
+        $cand{$f}{ $srcjv ? 1 : 2 }{$jap} = 1;
+    }
+    return {} unless %cand;
+
+    my (%rescued, %n_tier);
+    for my $f (keys %cand) {
+        my $tier = exists $cand{$f}{1} ? 1 : 2;
+        $n_tier{$tier}++;
+        $rescued{"$_\t$f"} = 1 for keys %{ $cand{$f}{$tier} };
+    }
+
+    # 救済した組の sciname2japname の行を足す。対象は和名が同じで最終の学名が
+    # 救済した学名になるレコード。最終の学名が別の学名になるレコードは足さない
+    # (無関係な学名に広げないため)。
+    for my $e (@$records) {
+        my ($r, $h) = @$e;
+        my ($jap, $sci, $jv, $sv, $rank, $subrank, $nos2j, $st, $sa, $su) = @$r;
+        next if $nos2j;
+        my ($f, $frank);
+        if (valid_of($validity, "s\t$sci")) { ($f, $frank) = ($sci, $rank) }
+        elsif (exists $accepted->{$sci})      { ($f, $frank) = @{ $accepted->{$sci} } }
+        else { next }
+        next unless $rescued{"$jap\t$f"};
+        my $cand = { sci => $sci, jap => $jap, rank => $rank, subrank => $subrank,
+                     src => $h->{src}, order => $h->{order},
+                     st => $st, sa => $sa, su => $su };
+        $take->($adopt_s2j, "$sci\t$jap", $cand, $r);
+        next if $f eq $sci;
+        $frank = $rank unless defined $frank;
+        next if rank_word_far($jap, $frank);
+        next if sciname_translit($jap, $sci) && !sciname_translit($jap, $f);
+        $take->($adopt_s2j, "$f\t$jap", { %$cand, sci => $f, rank => $frank }, $r);
+    }
+    logmsg('rescue', sprintf('%s: 有効な和名のない学名 %d 件に、階層語で終わる和名を有効名として'
+                             . '採りました (ソースの代表 %d 件 / ソースのシノニム %d 件)',
+                             $dir, scalar keys %cand, $n_tier{1} || 0, $n_tier{2} || 0));
+    return \%rescued;
+}
+
+# 系統の手がかり。最終2表に載った組 (和名と学名) ×ソースで1行。
+#   japname / sciname / sourceid / ids / anc
+# sourceid は第3段が sources.tsv の root を引くのに使う。
+sub write_taxonhint {
+    my ($dir, $hint, $order) = @_;
+    my $path = final_path($dir, 'taxonhint');
+    my $tmp = "$path.part";
+    open my $fh, '>', $tmp or die "書き込めません: $tmp: $!\n";
+    binmode $fh, ':encoding(UTF-8)';
+    my $n = 0;
+    for my $key (sort keys %$hint) {
+        my $by = $hint->{$key};
+        for my $sid (sort { $order->{$a} <=> $order->{$b} } keys %$by) {
+            my ($ids, $anc) = @{ $by->{$sid}[0] };
+            print $fh join("\t", $key, $sid, join('|', @{ $ids || [] }),
+                           join('|', @{ $anc || [] })), "\n";
+            $n++;
+        }
+    }
+    close $fh;
+    rename $tmp, $path or die "rename に失敗しました: $tmp -> $path: $!\n";
+    return $n;
+}
+
+# Wikidata の QID と NCBI taxid の対応表 (qid / taxid)。第3段が CSV を読まずに
+# 済むよう、ここで TSV にして出す (第3段の非コアモジュールは DBI / DBD::SQLite だけ)。
+sub write_qid2ncbi {
+    my ($dir, $paths) = @_;
+    my %pair;
+    for my $p (@$paths) {
+        open my $in, '<', $p or die "読めません: $p: $!\n";
+        while (my $line = <$in>) {
+            chomp $line;
+            $pair{$line} = 1 if $line =~ /\AQ\d+\t\d+\z/;
+        }
+        close $in;
+    }
+    my $path = final_path($dir, 'qid2ncbi');
+    my $tmp = "$path.part";
+    open my $fh, '>', $tmp or die "書き込めません: $tmp: $!\n";
+    print $fh "$_\n" for sort keys %pair;
+    close $fh;
+    rename $tmp, $path or die "rename に失敗しました: $tmp -> $path: $!\n";
+    return scalar keys %pair;
 }
 
 # 統合の入力: 中間 TSV と、有効性の判定に使う外部データ。
@@ -691,6 +873,8 @@ sub merge_fingerprint {
         # scope・year・出典は sources.tsv にあり、本スクリプトのダイジェストには
         # 入らない。変われば衝突解決と出典3列が変わるので、定義そのものを入れる。
         push @parts, flatten_value($h->{src});
+        my @q = stat qid2ncbi_path($h->{src});
+        push @parts, join(':', 'qid2ncbi', $q[7], $q[9]) if @q;
     }
     for my $ref (File::Spec->catfile($basedir, 'AllTaxa', 'NameUsage.tsv'),
                  File::Spec->catfile($basedir, 'NCBITaxonomy', 'names.dmp')) {
@@ -750,10 +934,10 @@ sub better_source {
     return $a->{order} < $b->{order} ? 1 : 0;
 }
 
+# $override は組単位の有効性の上書き ("1列目<TAB>2列目" -> 1。和名の救済)。
 sub write_final {
-    my ($dir, $kind, $table, $validity, $vprefix) = @_;
-    my $path = File::Spec->catfile($basedir, $dir,
-                                   "${kind}_${VERSION}_${BUILDDATE}.tsv");
+    my ($dir, $kind, $table, $validity, $vprefix, $override) = @_;
+    my $path = final_path($dir, $kind);
     my $tmp = "$path.part";
     open my $fh, '>', $tmp or die "書き込めません: $tmp: $!\n";
     binmode $fh, ':encoding(UTF-8)';
@@ -765,6 +949,7 @@ sub write_final {
                             ? ($c->{jap}, $c->{sci}) : ($c->{sci}, $c->{jap});
         my $v = $validity->{"$vprefix\t$first"};
         my $valid = $v ? $v->[0] : 1;
+        $valid = 1 if $override && $override->{$key};
         # レコード単位の出典があればそれを使う (Catalogue of Life の sourceID 由来)
         my $title  = length $c->{st} ? $c->{st} : display_title($c->{src});
         my $author = length $c->{sa} ? $c->{sa} : format_authors($c->{src}{sourceauthor});
@@ -859,6 +1044,8 @@ sub list_sources {
     }
     print "\n最終出力: <ディレクトリ>/japname2sciname_VERSION_BUILDDATE.tsv\n";
     print "          <ディレクトリ>/sciname2japname_VERSION_BUILDDATE.tsv\n";
+    print "          <ディレクトリ>/taxonhint_VERSION_BUILDDATE.tsv\n";
+    print "          AllTaxa/qid2ncbi_VERSION_BUILDDATE.tsv\n";
     print "中間出力: <ディレクトリ>/$WORKDIR_NAME/<ソースID>.tsv (--clean で削除する)\n";
 }
 
@@ -1000,7 +1187,7 @@ sub read_sources {
         exit 2;
     };
     binmode $fh, ':encoding(UTF-8)';
-    my %is_array = map { $_ => 1 } qw(sourceauthor files unzip unzip_only);
+    my %is_array = map { $_ => 1 } qw(sourceauthor files unzip unzip_only root);
     my (@cols, @sources, %seen, @err);
     while (my $line = <$fh>) {
         $line =~ s/\r?\n\z//;
@@ -2168,11 +2355,17 @@ sub add_pair {
             return;
         }
     }
-    # 有効名の形をしていない和名はシノニム扱いにする (README の規定)。
-    # rank は上で名前の形に合わせた後の値を使う。
-    $jv = 0 if $jv && !japname_valid_form($head, $rank);
+    # 有効名の形をしていない和名をシノニム扱いにする規則 (README の規定) は
+    # ここでは当てず、統合の段 (merge_directory) で当てる。中間 TSV の japvalid は
+    # ソースの判定のまま残し、「ソースがシノニムとした和名」と「形を満たさない
+    # だけの和名」を統合の段で区別できるようにするため (有効な和名のない学名の救済)。
     my $nos2j = $opt{nos2j} ? 1 : 0;
     my @si = $opt{srcinfo} ? @{ $opt{srcinfo} } : ('', '', '');
+    # 系統の手がかり (ids: 「col:<ID>」「wikidata:<QID>」など / anc: 祖先の学名)。
+    # 祖先から自分の学名は除く (「Carassius sp.」を属にした「フナ属 / Carassius」は
+    # 同じ行の属の列に自分が入っている)。
+    my @hint = map { $opt{$_} ? join('|', grep { defined && length && $_ ne $sci } @{ $opt{$_} })
+                              : '' } ('ids', 'anc');
     # 代表の和名が和名でないなら、その括弧内の別名も和名ではない。
     # 「キクスイモドキカミキリ属の不明種（東北個体群）」など。
     @syn = () if length $head && is_placeholder($head, $sci);
@@ -2196,7 +2389,8 @@ sub add_pair {
             push @names, [ $b, 0 ];
         }
     }
-    push @$out, [ $_->[0], $sci, $_->[1], $sv, $rank, $subrank, $nos2j, @si ] for @names;
+    push @$out, [ $_->[0], $sci, $_->[1], $sv, $rank, $subrank, $nos2j, @si, @hint ]
+        for @names;
 }
 
 # 型の指定や末尾の識別子を外した和名を作る。元の和名に加えて和名シノニム
@@ -2879,29 +3073,37 @@ sub parse_alltaxa {
             my ($rn, $c) = @_;
             if ($first) { $first = 0; return }
             my @f = map { defined $_ ? trim($_) : '' } @$c[0 .. 27];
+            # 同じ行の上位の階層の学名を系統の手がかりにする (上から順に)。
+            # コードは河川水辺の国勢調査の独自のもので CoL・NCBI の ID ではない。
+            my @anc;
             for my $lv (0 .. $#ALLTAXA_LEVELS) {
                 my ($ccol, $jcol, $scol, $rname) = @{ $ALLTAXA_LEVELS[$lv] };
                 my ($code, $jap, $sci) = @f[$ccol, $jcol, $scol];
+                my @up = @anc;
+                if (length $sci) {
+                    my $n = norm_sciname($sci);
+                    push @anc, $n if length $n;
+                }
                 next unless length $code && length $sci;
                 my ($rank, $subrank) = defined $rname ? (rk($rname), 1)
                                                       : rank_from_sciname(norm_sciname($sci));
                 if ($is_base) {
                     $base{$lv}{$code} = [ $jap, $sci ];
-                    add_pair(\@out, $jap, $sci, $rank, $subrank);
+                    add_pair(\@out, $jap, $sci, $rank, $subrank, anc => \@up);
                     next;
                 }
                 my $b = $base{$lv}{$code};
                 unless ($b) {
                     # 最新年度にない分類群。古いというだけで無効とは言えない。
-                    add_pair(\@out, $jap, $sci, $rank, $subrank);
+                    add_pair(\@out, $jap, $sci, $rank, $subrank, anc => \@up);
                     next;
                 }
                 my ($bjap, $bsci) = @$b;
                 if (norm_sciname($sci) ne norm_sciname($bsci)) {
-                    add_pair(\@out, $bjap, $sci, $rank, $subrank, scivalid => 0);
+                    add_pair(\@out, $bjap, $sci, $rank, $subrank, scivalid => 0, anc => \@up);
                 }
                 if (length $jap && norm_japname($jap) ne norm_japname($bjap)) {
-                    add_pair(\@out, $jap, $bsci, $rank, $subrank, japvalid => 0);
+                    add_pair(\@out, $jap, $bsci, $rank, $subrank, japvalid => 0, anc => \@up);
                 }
             }
         });
@@ -3507,7 +3709,7 @@ my %JAP_RANK_SUFFIX = (
     '上綱' => 'superclass', '亜綱' => 'subclass', '下綱' => 'infraclass', '綱' => 'class',
     '上目' => 'superorder', '亜目' => 'suborder', '下目' => 'infraorder', '目' => 'order',
     '上科' => 'superfamily', '亜科' => 'subfamily', '科' => 'family',
-    '亜族' => 'subtribe', '族' => 'tribe',
+    '亜族' => 'subtribe', '族' => 'tribe', '亜連' => 'subtribe', '連' => 'tribe',
     '亜属' => 'subgenus', '属' => 'genus', '節' => 'section',
     '亜種' => 'subspecies', '変種' => 'varietas', '品種' => 'forma',
 );
@@ -3974,9 +4176,12 @@ sub parse_col {
                 ($crank, $csubrank) = (rk('subspecies'), 1);
             }
             my $shown = $info ? $shown{$sid} : undef;
+            # 系統の手がかりは CoL の ID。シノニムの ID でもよい (第3段が
+            # parentID を辿る)。差し替え先の行には差し替え先の ID を入れる。
             add_pair(\@out, $name, $csci, $crank, $csubrank,
-                     scivalid => $valid, srcinfo => $shown);
-            add_pair(\@out, $name, $acc, $arank, $asubrank, srcinfo => $shown)
+                     scivalid => $valid, srcinfo => $shown, ids => [ "col:$id" ]);
+            add_pair(\@out, $name, $acc, $arank, $asubrank, srcinfo => $shown,
+                     ids => [ "col:$parent" ])
                 if !$valid && length $acc && $acc ne $csci;
         }
     }
@@ -4098,9 +4303,14 @@ sub col_yaml_quoted {
 #-----------------------------------------------------------------------------
 # Wikidata (QLever で取得した CSV)
 #
-# 列は qid / sci / ja / ranks / ranks_ja / parents / aliases / commons。
+# 列は qid / sci / ja / ranks / ranks_ja / parents / aliases / commons / ncbis。
 # ranks_ja が日本語の階級名 (種・属・科…) なので rank はそこから決める。
 # 有効名／シノニムの情報は持たないので学名は常に有効名として扱う。
+#
+# クエリ (wikidata.rq) は2つの枝の UNION で、2つ目の枝は P685 (NCBI taxid) を
+# 持つ全項目を和名を問わずに返す (sci と ja は空)。その行は和名の表には使わず、
+# QID と taxid の対応 (<ソースID>.qid2ncbi.tsv) を作るのにだけ使う。
+# 和名の行には系統の手がかりとして QID・taxid・親分類群 (P171) の QID を付ける。
 #
 # **aliases (skos:altLabel) は使わない。** 「別称」の欄で、実際に入っているのは
 # 「金魚の木」「金目鯛」「ブラックペッパー」「虎耳草」「サヴァティアーノ種」
@@ -4157,7 +4367,7 @@ sub looks_virus_name {
 sub parse_wikidata {
     my ($src, $paths) = @_;
     require Text::CSV;
-    my @out;
+    my (@out, %qid2ncbi);
     for my $path (@$paths) {
         my $csv = Text::CSV->new({ binary => 1, auto_diag => 0 });
         open my $fh, '<:encoding(UTF-8)', $path or die "読めません: $path: $!\n";
@@ -4167,6 +4377,9 @@ sub parse_wikidata {
         while (my $r = $csv->getline($fh)) {
             my $get = sub { my ($k) = @_;
                             return exists $ix{$k} && defined $r->[$ix{$k}] ? $r->[$ix{$k}] : '' };
+            my $qid   = $get->('qid');
+            my @ncbis = grep { /\A\d+\z/ } split /\|/, $get->('ncbis');
+            $qid2ncbi{"$qid\t$_"} = 1 for grep { $qid =~ /\AQ\d+\z/ } @ncbis;
             # ウイルスの学名は旧 ICTV 式の英語名で書かれていることがあるので、
             # ICTV の xlsx と同じく rawsci で学名をそのまま使う (下のコメント)。
             my $raw = looks_virus_name($get->('sci')) ? 1 : 0;
@@ -4200,18 +4413,29 @@ sub parse_wikidata {
                 ($rank, $subrank) = $raw && $sci =~ / /
                                   ? (rk('species'), 1) : rank_from_sciname($sci);
             }
-            add_pair(\@out, $jap, $sci, $rank, $subrank, rawsci => $raw);
+            my @ids = ((length $qid ? "wikidata:$qid" : ()), (map { "ncbi:$_" } @ncbis),
+                       (map { "wdparent:$_" } grep { length } split /\|/, $get->('parents')));
+            add_pair(\@out, $jap, $sci, $rank, $subrank, rawsci => $raw, ids => \@ids);
             # 種以下の commons は俗名の欄なので採らない (上のコメント参照)
             next if $rank >= rk('species');
             my $head = (split_japsyn($jap))[0];
             for my $c (split /\|/, $get->('commons')) {
                 next unless looks_japanese($c);
                 next if (split_japsyn($c))[0] eq $head;
-                add_pair(\@out, $c, $sci, $rank, $subrank, japvalid => 0, rawsci => $raw);
+                add_pair(\@out, $c, $sci, $rank, $subrank, japvalid => 0, rawsci => $raw,
+                         ids => \@ids);
             }
         }
         close $fh;
     }
+
+    # QID と taxid の対応は和名の無い項目も含めて全件書く (統合の段が出力する)
+    my $qpath = qid2ncbi_path($src);
+    make_path(dirname($qpath)) unless -d dirname($qpath);
+    open my $qh, '>', "$qpath.part" or die "書き込めません: $qpath.part: $!\n";
+    print $qh "$_\n" for sort keys %qid2ncbi;
+    close $qh;
+    rename "$qpath.part", $qpath or die "rename に失敗しました: $qpath.part -> $qpath: $!\n";
     return \@out;
 }
 

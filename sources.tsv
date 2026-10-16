@@ -31,36 +31,41 @@
 # unzip        ... 書庫名|展開後に存在するはずのファイル。パース前に展開する
 # unzip_only   ... 書庫から展開するファイルを限定する
 # optional     ... 1 なら入力が無くても失敗として数えない
+# root         ... そのソースが扱う分類群の根の学名 ('|' 区切り)。系統の名前は
+#                  CoL と NCBI で違うので両方の名前を並べてよい。系統が途中で
+#                  切れるソースの欠けを補い、同名異物を系統で絞る手がかりにする。
+#                  generate_tables.pl は使わず、taxonhint の sourceid を通して
+#                  generate_database.pl が使う。全生物を扱うソースは空欄
 # desc         ... 表示用の説明
 #
-dir	id	parser	scope	year	edition	sourcetitle	sourceauthor	sourceurl	files	unzip	unzip_only	optional	desc
-AllTaxa	ksn_zenseibutsu	alltaxa	0	2025	令和元年度〜令和7年度版	河川水辺の国勢調査のための生物リスト	国土交通省 国土技術政策総合研究所	https://www.nilim.go.jp/lab/fbg/ksnkankyo/mizukokuweb/system/seibutsuListfile.htm	R01zenseibutsu.xlsx|R02zenseibutsu.xlsx|R03zenseibutsu.xlsx|R04zenseibutsu.xlsx|R05zenseibutsu.xlsx|R06zenseibutsu.xlsx|R07zenseibutsu.xlsx				河川水辺の国勢調査のための生物リスト (R01〜R07)
+dir	id	parser	scope	year	edition	sourcetitle	sourceauthor	sourceurl	files	unzip	unzip_only	optional	root	desc
+AllTaxa	ksn_zenseibutsu	alltaxa	0	2025	令和元年度〜令和7年度版	河川水辺の国勢調査のための生物リスト	国土交通省 国土技術政策総合研究所	https://www.nilim.go.jp/lab/fbg/ksnkankyo/mizukokuweb/system/seibutsuListfile.htm	R01zenseibutsu.xlsx|R02zenseibutsu.xlsx|R03zenseibutsu.xlsx|R04zenseibutsu.xlsx|R05zenseibutsu.xlsx|R06zenseibutsu.xlsx|R07zenseibutsu.xlsx					河川水辺の国勢調査のための生物リスト (R01〜R07)
 # Catalogue of Life: ColDP の書庫は 5.6GB・21,425 ファイルある。必要な2つだけ
 # 展開し、source/*.yaml は書庫から直接読む。metadata.yaml の creator は50名以上
 # いるが、format_authors が3名以上を「先頭 et al.」に畳むので先頭3名だけを持つ。
-AllTaxa	col	col	0	2026	2026-09-25 XR	Catalogue of Life	Olaf Bánki|Yury Roskov|Markus Döring	https://download.checklistbank.org/col/monthly/2026-09-25_xr_coldp.zip	NameUsage.tsv|VernacularName.tsv	2026-09-25_xr_coldp.zip|NameUsage.tsv	NameUsage.tsv|VernacularName.tsv		Catalogue of Life (2026-09-25 XR)
-AllTaxa	wikidata	wikidata	0	2026	accessed	Wikidata	Wikidata contributors	https://www.wikidata.org/	wikidata.csv				Wikidata 学名・和名対応 (QLever で取得した CSV)
-Mammals	mammal_society	mammals	8	2021	20211223版	世界哺乳類標準和名リスト	川田 伸一郎|岩佐 真宏|福井 大|新宅 勇太|天野 雅男|下稲葉 さやか|樽 創|姉崎 智子|鈴木 聡|押田 龍夫|横畑 泰志	https://www.mammalogy.jp/list/index.html	list_20211223/list_20211223.xlsx	list_20211223.zip|list_20211223/list_20211223.xlsx			世界哺乳類標準和名リスト (2021年度版)
-Reptiles_Amphibians	herpetology_jp	herpetology	8	2026	accessed	日本産爬虫両生類標準和名リスト	日本爬虫両棲類学会	https://herpetology.jp/wamei/index_j.php	index_j.html				日本産爬虫両生類標準和名リスト
-Fishes	jaflist	jaflist	8	2026	2026年8月27日版	日本産魚類全種目録	本村 浩之	https://www.museum.kagoshima-u.ac.jp/staff/motomura/jaf.html	20260827_JAFList.xlsx				日本産魚類全種目録 (JAF List)
-Insects	naro_insecta	naro	8	2026	accessed	昆虫情報データベース	国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット	https://insect-web.rad.naro.go.jp/flame/tree	naro_insecta_page*.html				昆虫情報データベース (Insecta)
-Insects	shigainsect	shigainsect	8	2025	accessed	滋賀県昆虫目録2025	滋賀県昆虫目録作成グループ	https://sites.google.com/view/shigainsect/	shigainsect_*.tsv				滋賀県昆虫目録2025 (目別 TSV)
-Insects	listmj	listmj	14	2021	2021.6.3版	List-MJ 日本産蛾類総目録	神保 宇嗣	http://listmj.mothprog.com/	ListMJ3-*.xlsx				List-MJ 日本産蛾類総目録
-Insects	butterfly_list	butterfly	18	2026	accessed	日本産蝶類の学名リスト	長田 庸平	https://japanesebutterfly.wixsite.com/butterfly-list	butterfly_*.html				日本産蝶類の学名リスト (科別5ページ)
-Insects	trichoptera	trichoptera	14	2026	accessed	日本産トビケラの種名一覧	日本トビケラ情報ネットワーク	https://sites.google.com/view/tobikera/home/checklist	trichoptera_checklist.tsv				日本産トビケラの種名一覧
-Insects	staphylinidae	staphylinidae	19	2013		日本産ハネカクシ科総目録（昆虫綱：甲虫目）	柴田 泰利|丸山 宗利|保科 英人|岸本 年郎|直海 俊一郎|野村 周平|Volker Puthz|島田 孝|渡辺 泰明|山本 周平	https://doi.org/10.15017/26400	staphylinidae_p069.pdf				日本産ハネカクシ科総目録
-Insects	aculeata	aculeata	16	2016		日本産有剣膜翅類目録（2016 年版）	寺山 守	https://web.archive.org/web/20220324223234/https://sc888fba2c6537423.jimcontent.com/download/version/1486475674/module/12561110890/name/Hym.list.%28Japan%292016.ver5.pdf	aculeata_hym_list_2016_ver5.pdf				日本産有剣膜翅類目録 (2016年版)
-Spiders	naro_araneae	naro	14	2026	accessed	昆虫情報データベース	国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット	https://insect-web.rad.naro.go.jp/flame/tree	naro_araneae_page*.html				昆虫情報データベース (Araneae)
-Nematodes	naro_nematoda	naro	5	2026	accessed	昆虫情報データベース	国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット	https://insect-web.rad.naro.go.jp/flame/tree	naro_nematoda_page*.html				昆虫情報データベース (Nematoda)
-Tanaids	tanaids	tanaids	14	2026	accessed	日本近海産タナイス類リスト	角井 敬知	https://sites.google.com/site/tnidjpn/tanaidacea/jpnlist	jpnlist.html				日本近海産タナイス類リスト
-Earthworms	mimizu	earthworms	14	2025	accessed	日本産大型陸棲ミミズの種名一覧	南谷 幸雄	https://japanese-mimizu.jimdofree.com/%E3%83%9F%E3%83%9F%E3%82%BA%E3%81%AE%E5%88%86%E9%A1%9E/	nihonsan_mimizu_list.xlsx				日本産大型陸棲ミミズの種名一覧
-Isopods	warajimushi	isopods	15	2026	accessed	日本産ワラジムシ亜目種リスト	唐沢 重考	https://www.warajimushi.com/Species/List_species.html	List_species.html				日本産ワラジムシ亜目種リスト
-VascularPlants	ylist	ylist	5	2021	accessed	YList	米倉 浩司|梶田 忠	http://ylist.info/	20210514YList_download.xlsx				YList 植物和名-学名インデックス
-VascularPlants	ferngreenlist	ferngreenlist	8	2023		FernGreenList ver. 2.0	Atsushi Ebihara|Tao Fujiwara|Masayuki Takamiya|Motomi Ito|Tetsukazu Yahara	https://doi.org/10.57400/data.bnmnsbot.22696618	FernGreenListV2.0.csv				FernGreenList ver. 2.0
-Bryophytes	hattoria7	hattoria7	5	2016		A revised new catalog of the mosses of Japan	Tadashi Suzuki	https://doi.org/10.18968/hattoria.7.0_9	7_9.pdf				日本産蘚類チェックリスト (Hattoria 7)
-Bryophytes	hattoria9	hattoria9	5	2018		日本産タイ類・ツノゴケ類チェックリスト，2018	片桐 知之|古木 達郎	https://doi.org/10.18968/hattoria.9.0_53	9_53.pdf				日本産タイ類・ツノゴケ類チェックリスト (Hattoria 9)
-Lichens	lichenjapan	lichens	8	2026	accessed	Checklist of Lichens and Allied Fungi of Japan	Lichenological Society of Japan	https://lichenjapan.jp/checklist/	checklist.html				日本産地衣類チェックリスト
-Lichens	lichen_systematics	lichen_systematics	8	2026	accessed	Classification of higher taxonomic groups of lichens and allied fungi in Japan	Lichenological Society of Japan	https://lichenjapan.jp/systematics/	systematics.html				日本産地衣類・関連菌類の高次分類群
-Fungi	mycology_jp	fungi	2	2020	accessed	日本産菌類チェックリスト	日本菌学会 データベース委員会	https://www.mycology-jp.org/html/checklist_clist.html	DB20200311.xlsx				日本産菌類チェックリスト
-Seaweeds	seaweeds	seaweeds	5	2026	accessed	日本産海藻リスト	鈴木 雅大	https://tonysharks.com/Seaweeds_list/Seaweed_list_top.html	Brown/*.html|Red/*.html|Green/*.html				日本産海藻リスト
-Viruses	jsv_virus	jsv_virus	1	2024	accessed	ウイルス種名・英名・和名対応リスト	日本ウイルス学会	https://jsv.umin.jp/news/news241125.html	news241125.xlsx|news2411252.xlsx				ウイルス種名・英名・和名対応リスト
+AllTaxa	col	col	0	2026	2026-09-25 XR	Catalogue of Life	Olaf Bánki|Yury Roskov|Markus Döring	https://download.checklistbank.org/col/monthly/2026-09-25_xr_coldp.zip	NameUsage.tsv|VernacularName.tsv	2026-09-25_xr_coldp.zip|NameUsage.tsv	NameUsage.tsv|VernacularName.tsv			Catalogue of Life (2026-09-25 XR)
+AllTaxa	wikidata	wikidata	0	2026	accessed	Wikidata	Wikidata contributors	https://www.wikidata.org/	wikidata.csv					Wikidata 学名・和名対応 (QLever で取得した CSV)
+Mammals	mammal_society	mammals	8	2021	20211223版	世界哺乳類標準和名リスト	川田 伸一郎|岩佐 真宏|福井 大|新宅 勇太|天野 雅男|下稲葉 さやか|樽 創|姉崎 智子|鈴木 聡|押田 龍夫|横畑 泰志	https://www.mammalogy.jp/list/index.html	list_20211223/list_20211223.xlsx	list_20211223.zip|list_20211223/list_20211223.xlsx			Mammalia	世界哺乳類標準和名リスト (2021年度版)
+Reptiles_Amphibians	herpetology_jp	herpetology	8	2026	accessed	日本産爬虫両生類標準和名リスト	日本爬虫両棲類学会	https://herpetology.jp/wamei/index_j.php	index_j.html				Reptilia|Amphibia|Lepidosauria|Testudines|Crocodylia	日本産爬虫両生類標準和名リスト
+Fishes	jaflist	jaflist	8	2026	2026年8月27日版	日本産魚類全種目録	本村 浩之	https://www.museum.kagoshima-u.ac.jp/staff/motomura/jaf.html	20260827_JAFList.xlsx				Actinopterygii|Chondrichthyes|Myxini|Petromyzonti|Hyperoartia	日本産魚類全種目録 (JAF List)
+Insects	naro_insecta	naro	8	2026	accessed	昆虫情報データベース	国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット	https://insect-web.rad.naro.go.jp/flame/tree	naro_insecta_page*.html				Insecta	昆虫情報データベース (Insecta)
+Insects	shigainsect	shigainsect	8	2025	accessed	滋賀県昆虫目録2025	滋賀県昆虫目録作成グループ	https://sites.google.com/view/shigainsect/	shigainsect_*.tsv				Hexapoda	滋賀県昆虫目録2025 (目別 TSV)
+Insects	listmj	listmj	14	2021	2021.6.3版	List-MJ 日本産蛾類総目録	神保 宇嗣	http://listmj.mothprog.com/	ListMJ3-*.xlsx				Lepidoptera	List-MJ 日本産蛾類総目録
+Insects	butterfly_list	butterfly	18	2026	accessed	日本産蝶類の学名リスト	長田 庸平	https://japanesebutterfly.wixsite.com/butterfly-list	butterfly_*.html				Lepidoptera	日本産蝶類の学名リスト (科別5ページ)
+Insects	trichoptera	trichoptera	14	2026	accessed	日本産トビケラの種名一覧	日本トビケラ情報ネットワーク	https://sites.google.com/view/tobikera/home/checklist	trichoptera_checklist.tsv				Trichoptera	日本産トビケラの種名一覧
+Insects	staphylinidae	staphylinidae	19	2013		日本産ハネカクシ科総目録（昆虫綱：甲虫目）	柴田 泰利|丸山 宗利|保科 英人|岸本 年郎|直海 俊一郎|野村 周平|Volker Puthz|島田 孝|渡辺 泰明|山本 周平	https://doi.org/10.15017/26400	staphylinidae_p069.pdf				Staphylinidae	日本産ハネカクシ科総目録
+Insects	aculeata	aculeata	16	2016		日本産有剣膜翅類目録（2016 年版）	寺山 守	https://web.archive.org/web/20220324223234/https://sc888fba2c6537423.jimcontent.com/download/version/1486475674/module/12561110890/name/Hym.list.%28Japan%292016.ver5.pdf	aculeata_hym_list_2016_ver5.pdf				Hymenoptera	日本産有剣膜翅類目録 (2016年版)
+Spiders	naro_araneae	naro	14	2026	accessed	昆虫情報データベース	国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット	https://insect-web.rad.naro.go.jp/flame/tree	naro_araneae_page*.html				Araneae	昆虫情報データベース (Araneae)
+Nematodes	naro_nematoda	naro	5	2026	accessed	昆虫情報データベース	国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット	https://insect-web.rad.naro.go.jp/flame/tree	naro_nematoda_page*.html				Nematoda	昆虫情報データベース (Nematoda)
+Tanaids	tanaids	tanaids	14	2026	accessed	日本近海産タナイス類リスト	角井 敬知	https://sites.google.com/site/tnidjpn/tanaidacea/jpnlist	jpnlist.html				Tanaidacea	日本近海産タナイス類リスト
+Earthworms	mimizu	earthworms	14	2025	accessed	日本産大型陸棲ミミズの種名一覧	南谷 幸雄	https://japanese-mimizu.jimdofree.com/%E3%83%9F%E3%83%9F%E3%82%BA%E3%81%AE%E5%88%86%E9%A1%9E/	nihonsan_mimizu_list.xlsx				Crassiclitellata|Moniligastrida	日本産大型陸棲ミミズの種名一覧
+Isopods	warajimushi	isopods	15	2026	accessed	日本産ワラジムシ亜目種リスト	唐沢 重考	https://www.warajimushi.com/Species/List_species.html	List_species.html				Isopoda	日本産ワラジムシ亜目種リスト
+VascularPlants	ylist	ylist	5	2021	accessed	YList	米倉 浩司|梶田 忠	http://ylist.info/	20210514YList_download.xlsx				Tracheophyta|Bryophyta|Marchantiophyta|Anthocerotophyta	YList 植物和名-学名インデックス
+VascularPlants	ferngreenlist	ferngreenlist	8	2023		FernGreenList ver. 2.0	Atsushi Ebihara|Tao Fujiwara|Masayuki Takamiya|Motomi Ito|Tetsukazu Yahara	https://doi.org/10.57400/data.bnmnsbot.22696618	FernGreenListV2.0.csv				Polypodiopsida|Lycopodiopsida	FernGreenList ver. 2.0
+Bryophytes	hattoria7	hattoria7	5	2016		A revised new catalog of the mosses of Japan	Tadashi Suzuki	https://doi.org/10.18968/hattoria.7.0_9	7_9.pdf				Bryophyta	日本産蘚類チェックリスト (Hattoria 7)
+Bryophytes	hattoria9	hattoria9	5	2018		日本産タイ類・ツノゴケ類チェックリスト，2018	片桐 知之|古木 達郎	https://doi.org/10.18968/hattoria.9.0_53	9_53.pdf				Marchantiophyta|Anthocerotophyta	日本産タイ類・ツノゴケ類チェックリスト (Hattoria 9)
+Lichens	lichenjapan	lichens	8	2026	accessed	Checklist of Lichens and Allied Fungi of Japan	Lichenological Society of Japan	https://lichenjapan.jp/checklist/	checklist.html				Ascomycota|Basidiomycota	日本産地衣類チェックリスト
+Lichens	lichen_systematics	lichen_systematics	8	2026	accessed	Classification of higher taxonomic groups of lichens and allied fungi in Japan	Lichenological Society of Japan	https://lichenjapan.jp/systematics/	systematics.html				Ascomycota|Basidiomycota	日本産地衣類・関連菌類の高次分類群
+Fungi	mycology_jp	fungi	2	2020	accessed	日本産菌類チェックリスト	日本菌学会 データベース委員会	https://www.mycology-jp.org/html/checklist_clist.html	DB20200311.xlsx				Fungi	日本産菌類チェックリスト
+Seaweeds	seaweeds	seaweeds	5	2026	accessed	日本産海藻リスト	鈴木 雅大	https://tonysharks.com/Seaweeds_list/Seaweed_list_top.html	Brown/*.html|Red/*.html|Green/*.html				Rhodophyta|Chlorophyta|Ochrophyta|Prasinodermatophyta|Prasinodermophyta	日本産海藻リスト
+Viruses	jsv_virus	jsv_virus	1	2024	accessed	ウイルス種名・英名・和名対応リスト	日本ウイルス学会	https://jsv.umin.jp/news/news241125.html	news241125.xlsx|news2411252.xlsx				Viruses	ウイルス種名・英名・和名対応リスト
