@@ -21,6 +21,7 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
   - 各ディレクトリ内で生データファイルから和名→学名および学名→和名テーブルのTSVを生成する
 3. `generate_database.pl`
   - 和名→学名および学名→和名テーブルのTSVから単一の`jbtaxon_VERSION_BUILDDATE.sqlite3`を生成する
+  - Catalogue of LifeとNCBI Taxonomyの分類体系全体もDBに格納し、和名と学名の組をそれぞれの体系の節点に結び付ける
 4. `generate_dictionary.pl`
   - 和名→学名および学名→和名テーブルのTSVから和名読み→和名および和名読み→学名を日本語入力IMEで実現する単一の辞書ファイルTSVを生成する
 5. `add_to_yomi.pl`
@@ -267,6 +268,20 @@ sciname    japname    scivalid    rank    subrank    sourcetitle    sourceauthor
 ```
 
 実際にはスペースではなくタブを区切りとして使用する。学名シノニムがある場合、japnameが同一でscinameが異なる行が生じる。japnameにはシノニムは使用しない。scivalidは学名が有効名かどうかを示す(0はinvalidで1はvalid)。学名がシノニムなら0になる。rank・subrankについては後述。sourceurlは上記URLが出力される。sourcetitleはソースのタイトル。sourceauthorは作者名。ただし、Catalogue of Lifeの場合は該当するエントリごとにsourceIDがあるため、それに基づいてsourcetitle、sourceauthor、sourceurlを出力する。sourceauthorが3名以上の場合、日本語なら「～ら」、英語なら「～ et al.」として2人目以降を省略する。
+
+### データベース (jbtaxon_VERSION_BUILDDATE.sqlite3)
+
+`generate_database.pl`が全ディレクトリの和名→学名テーブルと学名→和名テーブルを集約して生成する。以下のテーブルを持つ。
+
+- `japname2sciname` / `sciname2japname` — 上記の2つのテーブルに、行の由来の分類群ディレクトリを示す`taxondir`列を加えたもの。同じ組が複数のディレクトリにあればディレクトリごとに別の行になる。
+- `rank` — `rank.def`の内容 (`rank`, `name`)。
+- `meta` — `version`と`builddate`。
+- `hierarchy_col` — Catalogue of Lifeの`NameUsage.tsv`の全行 (`id`, `parent`, `status`, `rank`, `name`, `authorship`, `alternativeid`, `namealternativeid`)。シノニムの`parent`は有効名を指す。`status`は有効名なら1、それ以外は0。
+- `hierarchy_ncbi` — NCBI Taxonomyの節点 (`taxid`, `parent`, `rank`)。
+- `names_ncbi` — NCBI Taxonomyの全ての名前 (`taxid`, `name`, `class`)。
+- `merged_ncbi` — NCBI Taxonomyで統合されたtaxid (`old_taxid`, `new_taxid`)。
+- `association_col_ncbi` — Catalogue of Lifeの有効名の節点とNCBI Taxonomyの節点の対応 (`colid`, `taxid`, `method`)。`method`は対応の根拠で、`ncbi` (Catalogue of LifeのalternativeIDのNCBI taxid)、`wikidata` (Catalogue of LifeのalternativeIDのWikidata項目が持つNCBI taxid)、`name` (学名の一致を系統で確かめたもの) のいずれか。
+- `taxonlink` — 和名と学名の組 (分類群ディレクトリごと) と体系の節点の対応 (`japname`, `sciname`, `taxondir`, `colid`, `colmethod`, `ncbiid`, `ncbimethod`)。決まらなければ空 (NULL)。`colmethod` / `ncbimethod`は根拠で、`id` (ソースが持つID)、`wikidata` (ソースが持つWikidata項目から引いたID)、`name` (学名の一致。ソースの分類群の範囲などの手がかりで同名異物を除いたもの)、`association` (もう一方の体系の節点から`association_col_ncbi`で引いたもの) のいずれか。
 
 ### 和名読み→和名辞書 (yomi2japname_VERSION_BUILDDATE.tsv)
 

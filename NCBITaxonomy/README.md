@@ -10,6 +10,8 @@
 
 Catalogue of Life は WoRMS をはじめ多数のデータベースを統合しているので、この2段で足りる。
 
+`generate_database.pl` は `nodes.dmp`・`names.dmp`・`merged.dmp` の全行を DB の `hierarchy_ncbi`・`names_ncbi`・`merged_ncbi` に入れ、Catalogue of Life の体系との対応 (`association_col_ncbi`) と、和名と学名の組の節点への結び付け (`taxonlink`) に使う。
+
 ## 自動ダウンロードされるファイル
 
 | ファイル | 形式 | 情報源 |

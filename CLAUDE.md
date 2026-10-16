@@ -24,7 +24,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 1. `fetch_data.pl` — 分類群ごとのディレクトリに生データファイルをダウンロード
 2. `generate_tables.pl` — 各ディレクトリ内で生データから和名→学名 / 学名→和名テーブル TSV を生成
-3. `generate_database.pl` — 全ディレクトリの TSV を集約し単一の `jbtaxon_VERSION_BUILDDATE.sqlite3` を生成
+3. `generate_database.pl` — 全ディレクトリの TSV を集約し単一の `jbtaxon_VERSION_BUILDDATE.sqlite3` を生成（CoL と NCBI の体系全体と、各組と節点の対応 `taxonlink` も入れる）
 4. `generate_dictionary.pl` — 全ディレクトリの TSV から日本語入力IME用辞書 TSV を生成
 
 3 と 4 は 2 の出力を共通の入力とする並列の枝であり、互いに依存しない。
@@ -239,21 +239,40 @@ shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（�
 
 ### generate_database.pl の実装契約
 
-実装済み。実行は約6秒・ピーク RSS 約670MB（入力 213,286 + 223,662 行、出力 170,081 + 178,016 行、DB 約99MB）。以下は変更してはならない約束事：
+実装済み。実行は約2分15秒・ピーク RSS 約9.3GB（入力 214,011 + 225,057 行、出力 170,277 + 178,821 行、taxonlink 199,104 組、DB 約2.1GB。CoL 2026-09-25 XR、NCBI 2026-09-09 の taxdump で計測。実行マシンはメモリ 16GB 以上を想定してよい（ユーザー確認済み））。以下は変更してはならない約束事：
 
-- **ここで解決するのはディレクトリ間の衝突だけ。** 名前ごとの有効名／シノニムの判定（CoL・NCBI を引くもの）は第2段で済んでいる。
+- **仕事は2つ。** (1) ディレクトリ間の衝突の解決、(2) Catalogue of Life と NCBI Taxonomy の体系全体を DB に入れ、DB の各組を節点に結び付けること（`taxonlink`）。名前ごとの有効名／シノニムの判定（CoL・NCBI を引くもの）は第2段で済んでいて、ここではやり直さない。
 - **分類群ディレクトリどうしは原則として比べず、どちらの行も残す。** 扱う生物がまったく違うので、片方の判定をもう片方に当てると別の生物についての判定を当てることになる。比べるのは「上位」と決めた組み合わせだけ（`superiors` / `%SUPERIOR_DIRS`）:
   - `AllTaxa` は他の全ディレクトリを上位とする（全生物を広く扱うので専門のリストに従う）。
   - `Lichens` は `Seaweeds` と `Fungi` を上位とする（藻類・菌類と重なったらそちらに従う）。現データでは共通の名前が無いので効いていない。
-- **上位に従うのは、上位が同じ組（和名と学名の対）を持つときだけ**（`resolve_pair`）。名前だけで比べると、分類群をまたぐ同名異物に別の生物の判定を当ててしまう（`ツルタケ` は YList ではタケのシノニム、Wikidata では菌類の `Amanita vaginata` の有効名。名前で比べていた版ではキノコの和名が消えていた）。このとき組の和名・学名の有効性は上位のその組での判定に置き換え（上位が複数あって割れたら、どれかが有効なら有効）、**2列目がその組で無効なら行を落とす**（「2列目にシノニムは現れない」を組の単位で守る）。同じ組を上位も残していれば下位の行は上位に譲る。実測で落とすのは j2s 39 行・s2j 1,758 行、和名を1つも持たなくなる学名は7件（`Antrophyum parvulum` など。専門のリスト自身がその組の和名をシノニムとしているもの）。
+- **上位に従うのは、上位が同じ組（和名と学名の対）を持つときだけ**（`resolve_pair`）。名前だけで比べると、分類群をまたぐ同名異物に別の生物の判定を当ててしまう（`ツルタケ` は YList ではタケのシノニム、Wikidata では菌類の `Amanita vaginata` の有効名。名前で比べていた版ではキノコの和名が消えていた）。このとき組の和名・学名の有効性は上位のその組での判定に置き換え（上位が複数あって割れたら、どれかが有効なら有効）、**2列目がその組で無効なら行を落とす**（「2列目にシノニムは現れない」を組の単位で守る）。同じ組を上位も残していれば下位の行は上位に譲る。実測で落とすのは j2s 41 行・s2j 1,777 行。
   - かつては全ディレクトリを「狭さ→新しさ→定義順」で比べ、名前ごとに有効性を1つに決めていた。和名を失う学名が262件出た（`ツルタケ` のほか、YList が蘚類のリストに新しさで勝って `アオイトゴケ` を消すなど）ので廃止した。**再導入しないこと。**
+  - 集計の「ディレクトリ内で有効性が食い違った名前」は現データで 5（本来は 0）。第2段の出力に由来する（体系の導入前の版でも同じ値）。
 - **同じ名前でも `taxondir` によって有効性のフラグが違うことがある**（`アオイトゴケ / Anomodon minor` は Bryophytes で有効、VascularPlants でシノニム）。AllTaxa では、上位が同じ組を持つ行だけ判定が置き換わるので、同じディレクトリ内でもフラグが行ごとに違いうる。
 - **スキーマ**: `japname2sciname(japname, sciname, japvalid, rank, subrank, sourcetitle, sourceauthor, sourceurl, taxondir)` と `sciname2japname`（1〜3列目が `sciname, japname, scivalid`）。同じ組がディレクトリごとに別の行になる（j2s で 1,839 組）ので、**主キーは `(1列目, 2列目, taxondir)`**。2列目に索引。`taxondir` は行の由来の分類群ディレクトリ。照合は既定の `BINARY` のまま——前方一致は `>= ? AND < ?` の範囲検索で主キーの索引を使える。補助に `rank(rank, name)`（`rank.def` をそのまま。1つの番号に複数の名前）と `meta(key, value)`（`version` / `builddate`）。
-- `sources.tsv` はディレクトリの一覧と並び順にだけ使う（scope / year は使わない）。`read_version` / `read_rank_def` / `read_sources` は `generate_tables.pl` からの写しで、スクリプト間でモジュールは共有しない。
+- **体系の表**（入れる範囲は**全部**。ユーザー決定。不要になったら完成後に削除する）:
+  - `hierarchy_col(id PK, parent, status, rank, name, authorship, alternativeid, namealternativeid)` — `NameUsage.tsv` の全行（8,479,599）。シノニムの `parent` は有効名を指す（ColDP の定義のまま）。`status` は 1＝有効名（accepted / provisionally accepted）、0＝それ以外。`rank` と `name` は CoL の表記のまま（`rank.def` にない階級が CoL だけで58種類ある）。`name` と `parent` に索引。
+  - `hierarchy_ncbi(taxid PK, parent, rank)`（`parent` に索引）・`names_ncbi(taxid, name, class)`（authority・type material も含む全 class、`name` と `taxid` に索引）・`merged_ncbi(old_taxid PK, new_taxid)`。
+  - `association_col_ncbi(colid, taxid, method)`（主キー `(colid, taxid)`、`taxid` に索引）— CoL の**有効名の**節点と NCBI の節点の対応。根拠の `method` は優先順に `ncbi`（CoL の alternativeID の `ncbi:txid…`。`txid` を外す。4,960）・`wikidata`（alternativeID の `wikidata:Q…` を `qid2ncbi` で引く。397,557）・`name`（196,660）。
+    - `name` は、1・2で対応の付いていない NCBI の節点の scientific name と、対応の付いていない CoL の有効名の学名が一致し、**NCBI 側で最も近い対応済みの祖先に対応する CoL の節点が、CoL 側の候補の祖先にいる**ものだけ。NCBI の節点を浅い順に見るので、ここで付けた対応も下の節点の祖先として使われる。「どこかの祖先が対応していればよい」にすると、界をまたぐ同名異物（`Prunella` の鳥と植物）がどちらも真核生物の下で通ってしまう。
+  - `taxonlink(japname, sciname, taxondir, colid, colmethod, ncbiid, ncbimethod)`（主キー `(japname, sciname, taxondir)`、`colid` と `ncbiid` に索引）— 最終2表の組をディレクトリごとに1行。**キーに和名を含める**（`Prunella` は和名との組で鳥（`イワヒバリ属` `カヤクグリ属`）か植物（`ウツボグサ属`）かが決まる）。`colid` は CoL の有効名の節点（シノニムの ID は parent を辿る）、`ncbiid` は NCBI の現行の節点（`merged.dmp` で統合先に直す）。根拠の列 `colmethod` / `ncbimethod` を持つ（ユーザー決定）。
+- **`taxonlink` の解き方**（`resolve_link`）。体系ごとに次の順で試し、決まったところで止める。
+  1. `id` — taxonhint の `col:<ID>` / `ncbi:<taxid>`。
+  2. `wikidata` — taxonhint の `wikidata:<QID>` を CoL の alternativeID（`wikidata:Q…`）と `qid2ncbi` で引く。
+  3. `name` — 学名の一致（CoL は誤用・裸名を除く全 status の名前、NCBI は `scientific name` `synonym` `equivalent name`）。
+  4. `association` — 片方だけ決まったとき、`association_col_ncbi` の対応がただ1つならそれで補う。
+  - 候補が複数なら**手がかりの名前**——`sources.tsv` の `root`、taxonhint の `anc`、`wdparent` の QID が指す節点の学名——が祖先（自身を含む）に最も多く当たる、ただ1つの候補を採る。
+  - **3（名前だけの一致）は、手がかりがあるのに候補の祖先に1つも当たらなければ候補が1つでも採らない**（ユーザー決定）。incertae sedis で系統が切れている正しい組も落ちるが、CoL に片方しか無い同名異物（`Acontiinae` は Insects ではガの亜科なのに CoL のものは別物、`Pieris japonica` のチョウ）を誤った節点に結ぶよりよい。検索側は手がかりの当たる候補が他に無ければ絞り込まないので、取りこぼしの害は小さい。1・2（ID の指定）にはこの制限をかけない。手がかりの無いソース（AllTaxa の col・wikidata の一部）は候補がただ1つなら採る。
+  - 実測（199,104 組）: colid は id 63,742 / wikidata 9,641 / name 101,778 / association 2,588 / なし 21,355、ncbiid は id 24,503 / name 111,602 / association 3,932 / なし 59,067（wikidata が 0 なのは、P685 を持つ項目は第2段が `ncbi:` も手がかりに入れているため）。独立に決めた colid と ncbiid が対応表と食い違う組が約1,000あるが、多くは CoL がシノニムとして畳んだ学名を NCBI が別の節点として持つもので、体系どうしの見解の違い。
+- **参照データ**は `AllTaxa/NameUsage.tsv`・`NCBITaxonomy/nodes.dmp` `names.dmp` `merged.dmp`・`AllTaxa/qid2ncbi_VERSION_BUILDDATE.tsv`。**1回だけ**読み、DB の表に入れると同時にメモリ上の表（`$R`）を作って結び付けを解く（行ごとに SQL を投げるより速く、二度読みもない）。`--only` に関わらず読む。**1つでも無ければ DB を作らない**（ユーザー決定。入力 TSV の欠けと同じ扱い）。
+  - **decode せずバイト列のまま扱い、DB にもバイト列のまま入れる。** そのため接続は `sqlite_unicode` を使わず、既存の2表・`rank`・`meta` は `Encode::encode('UTF-8', …)` してから入れる（文字列とバイト列を混ぜて `sqlite_unicode` で入れると化ける）。読む側は `sqlite_unicode => 1` で読めばよい。
+  - 学名の突き合わせには第2段と同じ正規化を通す（`ref_sciname_bytes`。`generate_tables.pl` の `ref_sciname_bytes` 一式の写し。**第2段を直したらこちらも直す**）。DB の `name` 列は正規化前の表記のまま。
+  - ID の集合は空白区切りの文字列で持つ（1千万件のハッシュに配列を持たせるとメモリが足りなくなるため）。
+- `sources.tsv` はディレクトリの一覧と並び順、`root` 列（`|` 区切りの配列として読む）にだけ使う（scope / year は使わない）。`read_version` / `read_rank_def` / `read_sources` は `generate_tables.pl` からの写しで、スクリプト間でモジュールは共有しない。
 - **`--builddate` は必須。** 入力の TSV と出力の `jbtaxon_VERSION_BUILDDATE.sqlite3` に同じ日付を使う。省略したら使い方を表示して exit 2。
-- **出力が既にあればスキップし、`--force` で作り直す。** そのため**入力 TSV が1つでも欠けていれば DB を作らない**（欠けた DB を正式な名前で書くと、次の実行がそれを飛ばしてしまう）。他の入力は最後まで読んで失敗を報告し、exit 1。
-- `.part` に作ってから rename する。`journal_mode=OFF` / `synchronous=OFF` で1トランザクションに入れ、最後に `ANALYZE`。`sqlite3` コマンドには依存しない（入っていない環境がある）。非コアモジュールは `DBI` / `DBD::SQLite` だけで、起動時に不足を検出して apt / cpanm を案内し exit 2。
-- CLI: `--builddate`（必須）/ `--dir` / `--only`（ディレクトリ、複数指定可）/ `--force` / `--version` / `--list`（ディレクトリの上下関係を表示）/ `--dry-run` / `--help`。`--list` と `--dry-run` は DB を作らない。
+- **出力が既にあればスキップし、`--force` で作り直す。** そのため**入力 TSV（j2s・s2j・taxonhint）か参照データが1つでも欠けていれば DB を作らない**（欠けた DB を正式な名前で書くと、次の実行がそれを飛ばしてしまう）。他の入力は最後まで読んで失敗を報告し、exit 1。
+- `.part` に作ってから rename する。`journal_mode=OFF` / `synchronous=OFF` で1トランザクションに入れ、体系の表の索引は行を入れ終えてから張り、最後に `ANALYZE`。`sqlite3` コマンドには依存しない（入っていない環境がある）。非コアモジュールは `DBI` / `DBD::SQLite` だけで、起動時に不足を検出して apt / cpanm を案内し exit 2。
+- CLI: `--builddate`（必須）/ `--dir` / `--only`（ディレクトリ、複数指定可）/ `--force` / `--version` / `--list`（ディレクトリの上下関係を表示）/ `--dry-run`（入力と参照データの存在確認）/ `--help`。`--list` と `--dry-run` は DB を作らない。
 
 ### ダウンロードURLは固定する（追従自動化しない）
 

@@ -26,7 +26,7 @@
 |---|---|---|
 | `2026-09-25_xr_coldp.zip` | ColDP (zip) | `https://download.checklistbank.org/col/monthly/2026-09-25_xr_coldp.zip` |
 
-2026-09-25 XR (Extended Release)。**約1.42GB あるので取得に時間がかかる。**書庫は展開すると 5.6GB・21,425 ファイルになるため、`generate_tables.pl` は**使う2ファイル (`NameUsage.tsv` 約3GB と `VernacularName.tsv`) だけを展開する**。提供元のメタデータ (`source/<ID>.yaml`) は展開せず書庫から直接読む。
+2026-09-25 XR (Extended Release)。**約1.42GB あるので取得に時間がかかる。**書庫は展開すると 5.6GB・21,425 ファイルになるため、`generate_tables.pl` は**使う2ファイル (`NameUsage.tsv` 約3GB と `VernacularName.tsv`) だけを展開する**。提供元のメタデータ (`source/<ID>.yaml`) は展開せず書庫から直接読む。`generate_database.pl` は `NameUsage.tsv` の全行を DB の `hierarchy_col` に入れ、`generate_tables.pl` が書き出す `qid2ncbi_VERSION_BUILDDATE.tsv` (Wikidata の QID と NCBI taxid の対応) と合わせて NCBI Taxonomy の体系との対応付けに使う。
 
 ### Wikidata
 
