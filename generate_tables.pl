@@ -682,6 +682,7 @@ sub merge_directory {
     my (%adopt_j2s, %adopt_s2j, %hint);
     my $take = sub {
         my ($table, $key, $cand, $r) = @_;
+        $cand->{rec} = $r;    # 種内の下位分類群の和名を種に足すときに手がかりを引く
         adopt($table, $key, $cand);
         my $e = $hint{"$cand->{jap}\t$cand->{sci}"}{ $cand->{src}{id} } ||= [ [], {} ];
         for my $i (0, 1) {
@@ -722,6 +723,7 @@ sub merge_directory {
 
     my $rescued = rescue_japnames($dir, \@records, \%validity, \%fixed, $accepted,
                                   \%adopt_s2j, $take);
+    add_infraspecific_japnames($dir, \%validity, $colv, \%adopt_s2j, $take);
 
     my $j2s = write_final($dir, 'japname2sciname', \%adopt_j2s, \%validity, 'j', $rescued);
     my $s2j = write_final($dir, 'sciname2japname', \%adopt_s2j, \%validity, 's');
@@ -814,6 +816,51 @@ sub rescue_japnames {
                              . '採りました (ソースの代表 %d 件 / ソースのシノニム %d 件)',
                              $dir, scalar keys %cand, $n_tier{1} || 0, $n_tier{2} || 0));
     return \%rescued;
+}
+
+# 種内の下位分類群 (亜種・変種・品種など) の有効な和名を、種の学名からも引ける
+# ようにする (ユーザー決定)。sciname2japname で種の学名を引くと、その種の下位
+# 分類群の和名も返る (「Oncorhynchus masou → サクラマス, サツキマス, ヤマメ, アマゴ」)。
+# 日本産魚類全種目録のように種を亜種だけで載せているリストでも種から引けるよう、
+# **種の行がこのディレクトリに無くても作る**。
+#   - 元にするのは sciname2japname に採った行のうち、1列目が有効な下位分類群の学名の
+#     もの (シノニムの学名からは広げない)。種の学名は species_of_infra で取り出す
+#   - 同じ組 (種の学名, 和名) が既にあれば足さない (重複は作らない)。下位分類群から
+#     同じ組が複数できたら、出典は狭さ→新しさ→定義順で選ぶ
+#   - rank は種。種の学名の有効性は、ディレクトリ内に判定があればそれ、無ければ
+#     Catalogue of Life (collect_scinames が種の学名も集めている)、それも無ければ
+#     下位分類群の判定 (有効) を引き継ぐ
+#   - 系統の手がかりは下位分類群のレコードの anc だけを引き継ぐ。ids は下位分類群の
+#     節点を指すので使わない
+# japname2sciname には足さない (和名は下位分類群の学名を指したまま)。
+sub add_infraspecific_japnames {
+    my ($dir, $validity, $colv, $adopt_s2j, $take) = @_;
+    my $species = rk('species');
+    my %add;
+    for my $key (keys %$adopt_s2j) {
+        my $c = $adopt_s2j->{$key};
+        next unless $c->{rank} > $species;
+        next unless valid_of($validity, "s\t$c->{sci}");
+        my $sp = species_of_infra($c->{sci});
+        next unless defined $sp;
+        next if exists $adopt_s2j->{"$sp\t$c->{jap}"};
+        adopt(\%add, "$sp\t$c->{jap}", { %$c, sci => $sp, rank => $species, subrank => 1 });
+    }
+    my %sp;
+    for my $key (keys %add) {
+        my $c = $add{$key};
+        $sp{ $c->{sci} } = 1;
+        unless (exists $validity->{"s\t$c->{sci}"}) {
+            my $v = exists $colv->{ $c->{sci} } ? $colv->{ $c->{sci} } : 1;
+            $validity->{"s\t$c->{sci}"} = [ $v, 0, 0, 0, 0 ];
+        }
+        my @rec = @{ $c->{rec} };
+        $rec[10] = '';
+        $take->($adopt_s2j, $key, $c, \@rec);
+    }
+    logmsg('infra', sprintf('%s: 種内の下位分類群の和名 %d 件を種 %d 件の和名として足しました',
+                            $dir, scalar keys %add, scalar keys %sp))
+        if %add;
 }
 
 # 系統の手がかり。最終2表に載った組 (和名と学名) ×ソースで1行。
@@ -2025,8 +2072,66 @@ sub japname_valid_form {
     my ($jap, $rank) = @_;
     return 0 unless defined $jap && length $jap;
     return 0 unless $jap =~ /[\x{30A1}-\x{30FA}]/;      # カタカナを含むこと
+    # 「類」は階層語ではなく、まとまりを漠然と指す語。種の階層の「アメマス類」
+    # 「サクラマス類」(河川水辺の国勢調査) も、高次の「真正双子葉類」「ワニ類」
+    # (Wikidata) も有効名にしない (ユーザー決定)。シノニムとしては残る。
+    return 0 if $jap =~ /類\z/;
     return 1 if !defined $rank || $rank >= rk('species');
     return $jap =~ /(?:$JAP_HIGH_RANK_WORD_RE)\z/ ? 1 : 0;
+}
+
+# 雑種の和名か。「アメマス類xアマゴ」「ウスヒメワラビxウスヒメワラビモドキ」の
+# ように、日本語の名前2つを x (×) で繋いだもの。ウイルスの「ジャガイモXウイルス」
+# 「センキュウウイルスX」は大文字の X なので当たらない。
+sub is_hybrid_japname {
+    my ($jap) = @_;
+    return 0 unless defined $jap;
+    return $jap =~ /[\p{Han}\p{Hiragana}\p{Katakana}\x{30FC}\x{3005}][x\x{00D7}][\p{Han}\p{Hiragana}\p{Katakana}]/
+         ? 1 : 0;
+}
+
+# 学名が雑種式か (「Rumex crispus x japonicus」「Salix babylonica var. babylonica x
+# miyabeana subsp. gymnolepis」「Genus1 x Genus2」)。雑種の種名 (「Fallopia x bohemica」
+# 「Pinus x densithunbergii」) は1つの分類群の名前なので雑種式ではない。
+# 3語目以降に x があるか、2語目の x の後ろが大文字で始まるものを雑種式とする。
+sub is_hybrid_formula {
+    my ($sci) = @_;
+    return 0 unless defined $sci;
+    my @t = split / /, $sci;
+    for my $i (1 .. $#t - 1) {
+        next unless $t[$i] eq 'x';
+        return 1 if $i >= 2 || $t[ $i + 1 ] =~ /\A[A-Z]/;
+    }
+    return 0;
+}
+
+# 学名が雑種を指しているか (雑種式・雑種の種名・「Syringa xlaciniata」のように x を
+# 種小名に付けた書き方)。雑種の和名がこれ以外の学名を指していれば誤った組で、
+# 「アメマス類xアマゴ / Salvelinus leucomaenis」のように片方の親の学名が付いている。
+sub is_hybrid_sciname {
+    my ($sci) = @_;
+    return 0 unless defined $sci;
+    return $sci =~ /(?:\A| )x(?: |[a-z])/ ? 1 : 0;
+}
+
+# 種内の下位分類群 (亜種・変種・品種など) の学名から種の学名を取り出す。
+# 「Acer pictum subsp. dissectum」→「Acer pictum」、「Luehdorfia puziloi yessoensis」→
+# 「Luehdorfia puziloi」、雑種の種の下位なら「Fallopia x bohemica …」→「Fallopia x
+# bohemica」。数字・引用符・「sp.」を含むもの (未記載種やウイルスの名前) と雑種式は
+# 取り出さない。参照データをバイト列で読む側 (collect_scinames) でも使う。
+my $INFRA_CONNECTOR = qr/(?:subsp|ssp|var|subvar|f|forma|morph|nothosubsp|nothovar)\./;
+
+sub species_of_infra {
+    my ($sci) = @_;
+    return undef unless defined $sci && $sci =~ /\A[A-Za-z .-]+\z/;
+    return undef if is_hybrid_formula($sci);
+    my @t = split / /, $sci;
+    my $n = (@t > 1 && $t[1] eq 'x') ? 3 : 2;
+    return undef unless @t > $n;
+    return undef unless $t[0] =~ /\A[A-Z][a-z]+(?:-[a-z]+)*\z/;
+    return undef unless $t[ $n - 1 ] =~ /\A[a-z][a-z-]*\z/;
+    return undef unless $t[$n] =~ /\A(?:$INFRA_CONNECTOR|[a-z][a-z-]*\z)/;
+    return join ' ', @t[ 0 .. $n - 1 ];
 }
 
 # 和名の接尾辞が示す階層と rank の差。階層語で終わっていなければ 0。
@@ -2356,11 +2461,20 @@ sub add_pair {
             return;
         }
     }
+    # 雑種の和名 (「アメマス類xアマゴ」) が雑種でない学名を指しているのは、片方の
+    # 親の学名を付けた誤った組。代表ならレコードごと、別名ならその名前だけ落とす。
+    my $hybrid_sci = is_hybrid_sciname($sci);
+    if (length $head && is_hybrid_japname($head) && !$hybrid_sci) {
+        reject_japname($head, $sci, '雑種の和名が雑種でない学名を指す');
+        return;
+    }
     # 有効名の形をしていない和名をシノニム扱いにする規則 (README の規定) は
     # ここでは当てず、統合の段 (merge_directory) で当てる。中間 TSV の japvalid は
     # ソースの判定のまま残し、「ソースがシノニムとした和名」と「形を満たさない
     # だけの和名」を統合の段で区別できるようにするため (有効な和名のない学名の救済)。
-    my $nos2j = $opt{nos2j} ? 1 : 0;
+    # 雑種式の学名 (「Rumex crispus x japonicus」) は「雑種の和名 → 雑種式」として
+    # japname2sciname にだけ残し、sciname2japname には出さない (ユーザー決定)。
+    my $nos2j = ($opt{nos2j} || is_hybrid_formula($sci)) ? 1 : 0;
     my @si = $opt{srcinfo} ? @{ $opt{srcinfo} } : ('', '', '');
     # 系統の手がかり (ids: 「col:<ID>」「wikidata:<QID>」など / anc: 祖先の学名)。
     # 祖先から自分の学名は除く (「Carassius sp.」を属にした「フナ属 / Carassius」は
@@ -2377,6 +2491,10 @@ sub add_pair {
         next if is_placeholder($s, $sci);
         if (my $gap = rank_word_far($s, $rank)) {
             reject_japname($s, $sci, "別名の階層と rank が $gap 段ずれ");
+            next;
+        }
+        if (is_hybrid_japname($s) && !$hybrid_sci) {
+            reject_japname($s, $sci, '雑種の別名が雑種でない学名を指す');
             next;
         }
         push @names, [ $s, 0 ];
@@ -4691,6 +4809,12 @@ sub collect_scinames {
             my @f = split /\t/, $line, 7;
             next unless @f >= 5 && length $f[1];
             $names{ $f[1] }{ $f[4] } = 1;
+            # 下位分類群の和名を種に足すとき (add_infraspecific_japnames)、種の学名の
+            # 有効性を Catalogue of Life で決めるので、種の学名も集めておく
+            if ($f[4] =~ /\A[0-9]+\z/ && $f[4] > rk('species')) {
+                my $sp = species_of_infra($f[1]);
+                $names{$sp}{ rk('species') } = 1 if defined $sp;
+            }
         }
         close $fh;
     }
