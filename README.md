@@ -1,6 +1,6 @@
 # JBTaxon
 
-A database of Japanese biological taxon names
+An association database between scientific names and Japanese biological taxon names covering all organisms
 
 ## JBTaxonの生成について
 
