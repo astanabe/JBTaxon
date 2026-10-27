@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## リポジトリの現状
 
-現時点でこのリポジトリに存在するのは `README.md`・`rank.def`・`yomi.tsv`・`VERSION`・`sources.tsv`・`.gitignore`・`AllTaxa/wikidata.rq`、実装済みの `fetch_data.pl`・`generate_tables.pl`・`generate_database.pl`・`sciname2japname.pl`・`japname2sciname.pl`、および分類群ごとのディレクトリと `NCBITaxonomy/` に置いた `README.md` 17件。残る2スクリプト (`generate_dictionary.pl` / `add_to_yomi.pl`) は**まだ実装されていない**。README.md は実装すべき仕様書として読むこと。ビルド・lint・テストの仕組みは未整備で、検証は `perl -c` と各スクリプトの `--list` / `--dry-run`、および実データでの実行と件数突き合わせで行っている。
+現時点でこのリポジトリに存在するのは `README.md`・`rank.def`・`yomi.tsv`・`VERSION`・`sources.tsv`・`.gitignore`・`AllTaxa/wikidata.rq`、実装済みの7スクリプト（`fetch_data.pl`・`generate_tables.pl`・`generate_database.pl`・`generate_dictionary.pl`・`add_to_yomi.pl`・`sciname2japname.pl`・`japname2sciname.pl`）、および分類群ごとのディレクトリと `NCBITaxonomy/` に置いた `README.md` 17件。README.md は実装すべき仕様書として読むこと。ビルド・lint・テストの仕組みは未整備で、検証は `perl -c` と各スクリプトの `--list` / `--dry-run`、および実データでの実行と件数突き合わせで行っている。
 
 `sources.tsv` はリポジトリルートにある情報源の定義（1行1ソース、タブ区切り、先頭行が列名、`#` はコメント、配列は `|` 区切り、行の順番が定義順）。`generate_tables.pl` と `generate_database.pl` が共通に読む。`fetch_data.pl` の取得用の表（URL など）は別物で統合しない。`root` 列はそのソースが扱う分類群の根の学名（`|` 区切り、CoL と NCBI の名前を両方並べてよい、全生物を扱うソースは空欄）で、第2段は使わず、`taxonhint` の `sourceid` を通して第3段が同名異物を系統で絞るのに使う（ソースの定義はソースと統合の両方の指紋に入るので、値を変えると第2段は全部作り直しになるが出力は変わらない）。値はソースの有効な学名を CoL の系統で集計して決めた。範囲外にしか当たらない学名はどのソースも 0〜1.4% で、その大半は CoL で系統が `incertae sedis` で切れているものか、CoL に片方しか無い同名異物（`Acontiinae` `Pieris japonica`）。海藻の `Prasinodermatophyta`（NCBI は `Prasinodermophyta`）は、CoL が `Palmophyllum` を `Chlorophyta` の外に置くために足してある。
 
@@ -297,6 +297,32 @@ shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（�
 - 祖先の名前は**正規化前の表記**なので、`norm_sciname`（`generate_database.pl` の `ref_sciname_bytes` と同じ規則を文字列に当てたもの。**第2段を直したらこちらも直す**）を両側に通して比べる。祖先の集合は節点ごとに覚え、親の集合を共有して作る。検索結果も（名前, rank, 手がかり）でメモ化する。
 - 出力の形はユーザー決定のとおり。クエリは標準出力に1行で `階層名:結果` を `; ` で連結（有効名の連結に `,` を使うため）。CONVERT では `unidentified ～` は空。出力ファイルは `.part` に書いてから rename する。終了コードは 0（引けない名前があっても 0）/ 2（使い方の誤り・入出力条件違反・DB を開けない）。
 - 実測（DB `0.1.2026.10.16`、サンプル3ファイル）: 各 0.1〜0.4 秒・RSS 約 20MB。引けない学名の多くは DB に有効な和名が無いもの（`Eukaryota` `Metazoa` `Teleostei` は和名がシノニムでしかない）と NCBI 独自の名前（`Euteleosteomorpha` `Tetradontoidea`）。複数の有効名が残るのは、同じ節点に別の和名が付いているもの（`Oncorhynchus` → `サケ属,タイヘイヨウサケ属`）で、同名異物ではない。
+
+### generate_dictionary.pl の実装契約
+
+実装済み。実行は約4秒・ピーク RSS 約380MB（入力 215,850 行・和名 158,146件、出力 yomi2japname 173,949 行・yomi2sciname 163,553 行。2026-10-27 の第2段の出力と、`add_to_yomi.pl` で 6,115件を空欄で追記しただけの `yomi.tsv` で計測。正確な読みが得られず出さなかった和名は 6,115件で、`add_to_yomi.pl` の件数と一致する）。以下は変更してはならない約束事：
+
+- **入力は各ディレクトリの `japname2sciname_VERSION_BUILDDATE.tsv` だけ。** `sciname2japname` は読まない——2列目は有効な和名だが、種の学名に亜種の和名を足した行（`add_infraspecific_japnames`）が入っているので、シノニムの読みから有効名を引くのに使うと亜種の和名に結んでしまう。`yomi.tsv` は `--dir` に依らずスクリプトの隣のものを読む。
+- **行の作り方。** yomi2japname は全ての和名（有効名もシノニムも）について「読み → その和名」、和名がシノニム（`japvalid=0`）ならさらに「読み → 同じ学名に有効（`japvalid=1`）として付いている和名」。yomi2sciname は全ての行について「和名の読み → 学名」（2列目は有効な学名だけなので学名のシノニムは出ない）。**シノニムから有効名を引くのは同じディレクトリの中だけ**（分類群をまたぐ同名異物の学名で別の生物の和名に結ばないため）。
+- **同じ（読み, 名前）は1行にまとめる。** 出典は、和名そのものの行をシノニムから引いた行より優先し、次いで専門のディレクトリ（`sources.tsv` の順）を AllTaxa より優先して、最初の行のものを使う。mozc-system の lid/rid もその行の rank で決まる。出力は（読み, 名前）の順に並べる。
+- **読みは `make_yomi` で組み立てる。`add_to_yomi.pl` の `make_yomi` と同じもの**（`$KANA_CLASS` `$MAX_YOMI` も写し。片方を直したら `diff` で確かめながらもう片方に写す）。カタカナはひらがなに直し、`ー` は残し、**`・` は読みに入れない**（IME では区切らずに打つため）。
+  - **`yomi.tsv` の情報が足りず正確な読みが得られない和名は、その和名の行を出さない**（ユーザー決定）。得られないのは、かなと `yomi.tsv` の和名で覆えないとき、と、残った読みが `$MAX_YOMI`（16）通りを超えたとき（途中で打ち切った読みは出さない）。シノニムの読みから有効名を引く行も、シノニムの読みが得られなければ出さない。件数は集計で報告する。
+  - **覆い方が何通りもあれば、区切りの数（かな1字も `yomi.tsv` の1件も1つ）が最も少ないものだけを使う。** `yomi.tsv` の長い見出しは作者がその範囲の読みとして書いたものなので、短い見出しを繋いだ読みより正確。`下目`（かもく）があれば、`した 下` が足されても `したもく` を作らない。そこで `yomi.tsv` の読みが何通りもあれば（`日本` の にほん / にっぽん）、異なる読みを全て出す。
+- `yomi.tsv` は1行目が `yomi<TAB>japname`、各行が2列、読みがひらがなと `ー` だけであることを確かめ、崩れていれば exit 2。読みが空欄の行は使わない。
+- **lid/rid は rank が species 以上の番号（種以下）なら「名詞,固有名詞,一般」、それより小さければ（rank 0 を含む）「名詞,固有名詞,組織」。** `id.def` は「ID 品詞」の行で、先頭3項目が一致し残りが全て `*` の行の ID を採る（無ければ最初に一致した行）。lid と rid は同じ値。
+- 出力は毎回作り直す（`.part` に書いてから rename）。`--for` を変えても同じファイル名になるため、`generate_database.pl` のように「既にあれば飛ばす」はしない。入力 TSV が欠けたディレクトリは失敗として報告し、残りで書き出す（exit 1）。
+- CLI: `--builddate`（必須）/ `--for`（`generic` `mozc-user` `gboard` `mozc-system`）/ `--id-def`（mozc-system では必須）/ `--japcost` / `--scicost`（既定 9999）/ `--dir` / `--only` / `--version` / `--dry-run` / `--help`。
+
+### add_to_yomi.pl の実装契約
+
+実装済み。実行は約1秒（16ディレクトリの和名 158,146件のうち、読みを自動生成できないもの 6,115件。2026-10-27 の第2段の出力で計測）。以下は変更してはならない約束事：
+
+- **入力は各ディレクトリの `japname2sciname_VERSION_BUILDDATE.tsv` の1列目（有効名もシノニムも）。** 辞書は和名シノニムの読みも引くため。`--builddate` は必須（`generate_database.pl` と同じ）。`yomi.tsv` は `--dir` に依らずスクリプトの隣のものを読み書きする（リポジトリのファイルなので）。
+- **「読みを自動生成できる」とは、`generate_dictionary.pl` と同じ `make_yomi` が読みを1つ以上返すこと**（写し。片方を直したらもう片方も直す。辞書が読みを付けられない和名をここで「生成できる」とすると、どこにも拾われない和名が出る）。和名をかな1字と `yomi.tsv` の japname（読みが空でない行）で隙間なく覆えて、区切りの数が最少の覆い方の読みが `$MAX_YOMI` 通り以内であること。かなはひらがな・全角カタカナ（`ヴ` まで）・`ー`・`・`。切り方は全て調べる（最長一致では覆えない名前がある）。`ヵ` `ヶ` は `八ヶ岳` のように「が」と読むのでかなに入れない。漢字・数字・ラテン文字・`々` は `yomi.tsv` に無ければ読みにならない。読みが多すぎて決められない和名も追記するので、和名全体の読みを書けば1通りに決まる。
+- **追記するのは和名の全体**（README の規定「yomi空欄でjapnameを追加」）。足りない漢字の部分だけを切り出すことはしない。読みが空欄の行も「載っている」とみなして二重に足さない（何度実行してもよい）。並びは符号位置の順。
+- `yomi.tsv` の1行目が `yomi<TAB>japname` でないか、2列でない行があれば追記せず exit 2（手で埋めた行の崩れを末尾への追記で埋もれさせないため）。書き込みは `.part` に元の中身と追記分を書いてから rename する。
+- 入力 TSV が欠けたディレクトリは失敗として報告し、他のディレクトリの分は追記する（exit 1）。追記は何度でもやり直せるので、`generate_database.pl` のように全体を止める必要はない。
+- CLI: `--builddate`（必須）/ `--dir` / `--only`（ディレクトリ、複数指定可）/ `--version` / `--dry-run`（追記する和名を表示するだけ）/ `--help`。
 
 ### ダウンロードURLは固定する（追従自動化しない）
 
