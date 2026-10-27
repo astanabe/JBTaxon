@@ -55,11 +55,11 @@ yomi    japname
 
 - https://www.nilim.go.jp/lab/fbg/ksnkankyo/mizukokuweb/system/seibutsuListfile.htm
 
-#### Catalogue of Life (2026-09-25 XR) (Olaf Bánki et al.)
+#### Catalogue of Life (2026-10-16 XR) (Olaf Bánki et al.)
 
-以下のURLから取得できるzipファイルがデータファイルを含む配布ファイルです。`fetch_data.pl`が実行されると自動的に`AllTaxa/2026-09-25_xr_coldp.zip`としてダウンロードされます。
+以下のURLから取得できるzipファイルがデータファイルを含む配布ファイルです。`fetch_data.pl`が実行されると自動的に`AllTaxa/2026-10-16_xr_coldp.zip`としてダウンロードされます。
 
-- https://download.checklistbank.org/col/monthly/2026-09-25_xr_coldp.zip
+- https://download.checklistbank.org/col/monthly/2026-10-16_xr_coldp.zip
 
 #### Wikidata (Wikidata contributors)
 
@@ -85,7 +85,7 @@ yomi    japname
 
 ### 魚類 (Fishes)
 
-#### 日本産魚類全種目録 ver. 42 (2026年8月27日版) (本村 浩之)
+#### 日本産魚類全種目録 ver. 43 (2026年10月25日版) (本村 浩之)
 
 以下のURLで提供されているExcelファイルがデータファイルです。`fetch_data.pl`が実行されると自動的にダウンロードされます。
 

@@ -91,7 +91,7 @@ shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（�
 
 ### generate_tables.pl の実装契約
 
-実装済み。実行は約4分30秒・ピーク RSS 約1.1GB（全28ソース、中間レコード 290,822件、最終出力 446,536行（j2s 213,976・s2j 232,560）、taxonhint 306,447行、qid2ncbi 631,136行。CoL 2026-09-25 XR、Wikidata 2026-10-16 取得で計測）。以下は変更してはならない約束事：
+実装済み。実行は約5分・ピーク RSS 約1.1GB（全28ソース、中間レコード 293,439件、最終出力 450,626行（j2s 215,850・s2j 234,776）、taxonhint 309,437行、qid2ncbi 627,995行。CoL 2026-10-16 XR、Wikidata 2026-10-27 取得で計測）。以下は変更してはならない約束事：
 
 - **非コアモジュールを使う。** `HTML::TreeBuilder` / `HTML::TableExtract` / `Text::CSV` / `Encode::JIS2K` の4つと、外部コマンド `pdftotext` (poppler-utils + poppler-data)。起動時に `check_dependencies()` が不足を検出し、apt / cpanm の案内を出して exit 2 する。これ以上増やさないこと。
 - **xlsx の `_x000D_` のようなエスケープは落とす**（`strip_xlsx_escapes`）。xlsx は制御文字をこの形で書くが、実データでは実際の改行と併記されていて（`フチトリコメツキダ_x000D_\r\nマシ属`）、そのまま読むと文字列が名前に残る。`_x005F_` でエスケープされた下線は元に戻す。
@@ -132,7 +132,7 @@ shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（�
 - **雑種の和名**（`is_hybrid_japname`。日本語2つを小文字の `x`／`×` で繋いだもの。大文字の `X` はウイルス名 `ジャガイモXウイルス` なので当たらない）**は、学名が雑種を表すとき（`is_hybrid_sciname`）だけ採る**（ユーザー決定）。片方の親の学名が付いた組（`アメマス類xアマゴ / Salvelinus leucomaenis`、FernGreenList のシダの雑種 31件など計36件）は、代表ならレコードごと、別名ならその名前だけ落として `.rejected` に記録する。
   - **学名が雑種式（`is_hybrid_formula`。3語目以降に `x` があるか、2語目の `x` の後ろが大文字）なら `nos2j` を立てて `japname2sciname` にだけ残す**（ユーザー決定。`コウゾ → Broussonetia kazinoki x papyrifera`）。雑種の種名（`Fallopia x bohemica`）は1つの分類群の名前なので両方向に出す。
 - **種内の下位分類群の有効な和名を種の学名の和名としても出す**（`add_infraspecific_japnames`。ユーザー決定）。`sciname2japname` で種を引くと亜種・変種・品種の和名も返るようにするため。統合の段の最後（救済の後）に、`sciname2japname` に採った行のうち1列目が有効な下位分類群の学名の行から、`species_of_infra` で種の学名を取り出して（種の学名, 和名）の行を足す。
-  - **種の行がそのディレクトリに無くても作る**（日本産魚類全種目録は `Oncorhynchus masou` を亜種だけで載せている）。同じ組が既にあれば足さない。rank は種、出典は下位分類群のレコード（複数あれば狭さ→新しさ→定義順）。種の学名の有効性はディレクトリ内の判定 → CoL（`collect_scinames` が種の学名も集める）→ 有効、の順。
+  - **種の行がそのディレクトリに無くても作る**（日本産魚類全種目録は `Oncorhynchus masou` を亜種だけで載せている）。同じ組が既にあれば足さない。rank は種、出典は下位分類群のレコード（複数あれば狭さ→新しさ→定義順、それでも同点なら下位分類群の学名の順。ハッシュの順に回すと実行のたびに出典が入れ替わる）。種の学名の有効性はディレクトリ内の判定 → CoL（`collect_scinames` が種の学名も集める）→ 有効、の順。
   - 系統の手がかりは下位分類群のレコードの `anc` だけを引き継ぎ、`ids` は使わない（下位分類群の節点を指すため）。`japname2sciname` には足さない。
   - 魚類の併記の和名（`サクラマス・ヤマメ`）は `nos2j` なので、種に足されるのは分割後の `サクラマス` `ヤマメ` になる（下の JAFList の規則）。
   - 実測で全ディレクトリ計 7,577行（AllTaxa 5,787）。
@@ -166,7 +166,7 @@ shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（�
 - **系統の手がかり `taxonhint` を出す。** DB の行（和名と学名の組）を CoL / NCBI の体系の節点に結び付けて同名異物を系統で絞るためのもので、**結び付けの解決は第3段**（体系全体を読み込むので）。中間 TSV の `ids` / `anc`（どちらも `|` 区切り、空でもよい）を `add_pair` の `ids => [...]` / `anc => [...]` で入れる（`anc` からは自分の学名を除く）。
   - `ids` は `col:<ID>`（`parse_col`。シノニムの ID でもよく第3段が parent を辿る。差し替え先の行には差し替え先の ID）・`wikidata:<QID>` `ncbi:<taxid>` `wdparent:<P171 の QID>`（`parse_wikidata`。P1843 由来の行も同じ）。`anc` は河川水辺の国勢調査の同じ行の上位の階層の学名（上から順、`norm_sciname` 済み。コード列は CoL・NCBI の ID ではないので使わない）。他のパーサは手がかりを持たず、`sources.tsv` の `root` で補う。
   - 統合が `<分類群>/taxonhint_VERSION_BUILDDATE.tsv`（`japname / sciname / sourceid / ids / anc`、**組×ソースで1行**）に書く。最終2表のどちらかに載った組について、**その組を生んだ全ソースのレコード**の手がかりを集める（出典に採ったソースだけではない）。差し替え先の行・救済の行も含む。
-  - `parse_wikidata` は和名の無い項目も含めた全件の（QID, taxid）を `<分類群>/.jbtaxon/wikidata.qid2ncbi.tsv` に書き、統合が `AllTaxa/qid2ncbi_VERSION_BUILDDATE.tsv`（`qid / taxid`、重複なし）として出す。**第3段が Text::CSV なしで読めるようにするため**（第3段の非コアモジュールは `DBI` / `DBD::SQLite` だけ）。実測 631,137 行。
+  - `parse_wikidata` は和名の無い項目も含めた全件の（QID, taxid）を `<分類群>/.jbtaxon/wikidata.qid2ncbi.tsv` に書き、統合が `AllTaxa/qid2ncbi_VERSION_BUILDDATE.tsv`（`qid / taxid`、重複なし）として出す。**第3段が Text::CSV なしで読めるようにするため**（第3段の非コアモジュールは `DBI` / `DBD::SQLite` だけ）。実測 627,995 行。
   - 統合を飛ばす条件は「最終ファイル（j2s・s2j・taxonhint、対応表を持つディレクトリは qid2ncbi も）が全て揃い、`merge.fp` が一致」。`merge.fp` には対応表の中間ファイルの更新時刻も入る。
 - **ファイル末尾の「実行」ブロックより前にサブルーチンが使う `my` の表を置くこと。** 実行文がファイル途中にあると、その後ろで宣言された `my %TABLE = (...)` の代入前に参照してしまい、黙って空の表を使う。この事故を防ぐため実行文はすべてファイル末尾に集めてある。
 - 失敗しても即座に中断せず最後まで走り切り、失敗一覧を末尾に再掲する。exit は `$n_fail ? 1 : 0`。
@@ -228,9 +228,10 @@ shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（�
   - 外すことで NCBI 側の22件が新たにこちらの学名に当たるようになるが（`Bathyarchaeota` `Korarchaeum cryptofilum` `Melainabacteria` など。`Candidatus Limicola` が鳥の属 `Limicola` と衝突する同名異物も含む）、**いずれもソース間の判定が一致しているので NCBI を引く条件に入らず、出力は変わらない**。`%ncbi` は同じ名前に複数の class が当たるとき有効名を優先するので、衝突しても有効名の判定が勝つ。
 - **`norm_sciname` は接続語の直後だけ識別子を許す。** `sp. 1` / `subsp. 2` / `sp. L` / `sp. 'yamato'` を残しつつ、著者名を種小名と取り違えないため。`sensu` `auct.` `non` `nec` `complex` `group` `Type` `of` は名前の一部ではないのでそこで打ち切る。
 - **識別子の付かない「属名 sp.」は和名で扱いを分ける**（`add_pair`。全ソース共通）。和名が種より上の階層語で終わるなら（河川水辺の国勢調査の `フナ属 / Carassius sp.`）属そのものを指しているので、**属の学名に付かない ` sp.` を外し**（`Carassius`）、rank は和名の階層語に合わせる。それ以外（魚類の `アイコバンハゼ / Gobiodon sp.`）はその属の未記載種・未同定種なので**種にする**——`rank_from_sciname` は `sp.` を語として数えないので語尾から属（`Neritina` は亜族、`Psychidae` は科）と推してしまい、和名が種より上の有効名の形（カナ名＋階層語）を満たさずシノニムに落ちていた。`spp.` は複数の種をまとめた書き方なので触らない。
-- **Catalogue of Life** — `2026-09-25_xr_coldp.zip` から展開した `NameUsage.tsv`（約3GB）と `VernacularName.tsv` を突き合わせる。巨大なので **`:encoding(UTF-8)` を通さずバイト列で行を読み、1列目の ID が必要な集合にある行だけ split して該当フィールドを decode する**。シノニムの有効名は `col:parentID` の先にあるので2周する。`language` が `jpn` の和名は 100,374件（2026-09-25 XR。GBIF Backbone Taxonomy の 27,558件の上位互換）。ローマ字表記の和名は `is_placeholder` が日本語文字を含まない名前として落とす（意図した挙動）。
+- **Catalogue of Life** — `2026-10-16_xr_coldp.zip` から展開した `NameUsage.tsv`（約3.6GB）と `VernacularName.tsv` を突き合わせる。巨大なので **`:encoding(UTF-8)` を通さずバイト列で行を読み、1列目の ID が必要な集合にある行だけ split して該当フィールドを decode する**。シノニムの有効名は `col:parentID` の先にあるので2周する。`language` が `jpn` の和名は 100,374件（2026-09-25 XR。GBIF Backbone Taxonomy の 27,558件の上位互換）。ローマ字表記の和名は `is_placeholder` が日本語文字を含まない名前として落とす（意図した挙動）。
   - **レコードは ID の順に出す**（`parse_col` の `sort keys %rec`）。同じ組を複数の提供元が持つとき統合は先に出た方の出典を採るので、ハッシュの順に回すと実行のたびに出典3列が入れ替わる（実際に AllTaxa で約230行ずつ揺れていた）。
   - 書庫は展開すると 5.6GB・21,425 ファイルになるので、**`unzip_only` で使う2ファイルだけを展開する**。提供元のメタデータ `source/<ID>.yaml` は展開せず、必要なものだけを書庫の1回のストリーム走査で読む。
+  - **展開済みのファイルが書庫より古ければ展開し直す**（`expand_zip`）。存在だけで判定すると、版を上げて新しい書庫を置いても古い版から展開した `NameUsage.tsv` を読み続ける。展開は `.part` に書いてから rename する（中断で切り詰められたファイルは書庫より新しいので、展開済みと誤認されるため）。
   - **エントリごとの `sourceID` から出典を作る**（README の規定）。`source/<ID>.yaml` の `title` / `author`→`editor`→`creator`→`contact` / `url` を使い、人名が無いデータベースは団体名、それも無ければ表題を著者に使う。YAML の完全な解釈はしないが、`title` は複数行の二重引用符付きスカラで書かれることがあるのでそこだけは畳む。
 - **Wikidata** — `ranks_ja`（種・属・科…）から rank を決める。有効名／シノニムの情報を持たないので学名は常に有効名。
   - **クエリ（`AllTaxa/wikidata.rq`）は1ファイルで、2つの枝の `UNION`。** 枝1は和名ラベルのある項目（従来の列に `ncbis`＝P685 を足したもの、約4.4万行）、枝2は P685 を持つ全項目（和名を問わない、`sci` と `ja` は空、約63万行）。`GROUP BY ?qid ?sci ?ja` のままなので両方の枝に出る項目は2行になる。枝2の行は `sci` と `ja` が空なので和名の表には使わず、QID と taxid の対応だけに使う。QLever で約10秒・19MB。
@@ -247,21 +248,21 @@ shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（�
 
 ### generate_database.pl の実装契約
 
-実装済み。実行は約2分15秒・ピーク RSS 約9.3GB（入力 213,976 + 232,560 行、出力 170,242 + 183,706 行、taxonlink 204,256 組、DB 約2.1GB。CoL 2026-09-25 XR、NCBI 2026-09-09 の taxdump で計測。実行マシンはメモリ 16GB 以上を想定してよい（ユーザー確認済み））。以下は変更してはならない約束事：
+実装済み。実行は約2分15秒・ピーク RSS 約9.3GB（入力 215,850 + 234,776 行、出力 171,784 + 185,528 行、taxonlink 206,111 組、DB 約2.1GB。CoL 2026-10-16 XR、NCBI 2026-10-27 の taxdump で計測。実行マシンはメモリ 16GB 以上を想定してよい（ユーザー確認済み））。以下は変更してはならない約束事：
 
 - **仕事は2つ。** (1) ディレクトリ間の衝突の解決、(2) Catalogue of Life と NCBI Taxonomy の体系全体を DB に入れ、DB の各組を節点に結び付けること（`taxonlink`）。名前ごとの有効名／シノニムの判定（CoL・NCBI を引くもの）は第2段で済んでいて、ここではやり直さない。
 - **分類群ディレクトリどうしは原則として比べず、どちらの行も残す。** 扱う生物がまったく違うので、片方の判定をもう片方に当てると別の生物についての判定を当てることになる。比べるのは「上位」と決めた組み合わせだけ（`superiors` / `%SUPERIOR_DIRS`）:
   - `AllTaxa` は他の全ディレクトリを上位とする（全生物を広く扱うので専門のリストに従う）。
   - `Lichens` は `Seaweeds` と `Fungi` を上位とする（藻類・菌類と重なったらそちらに従う）。現データでは共通の名前が無いので効いていない。
-- **上位に従うのは、上位が同じ組（和名と学名の対）を持つときだけ**（`resolve_pair`）。名前だけで比べると、分類群をまたぐ同名異物に別の生物の判定を当ててしまう（`ツルタケ` は YList ではタケのシノニム、Wikidata では菌類の `Amanita vaginata` の有効名。名前で比べていた版ではキノコの和名が消えていた）。このとき組の和名・学名の有効性は上位のその組での判定に置き換え（上位が複数あって割れたら、どれかが有効なら有効）、**2列目がその組で無効なら行を落とす**（「2列目にシノニムは現れない」を組の単位で守る）。同じ組を上位も残していれば下位の行は上位に譲る。実測で落とすのは j2s 41 行・s2j 1,897 行。
+- **上位に従うのは、上位が同じ組（和名と学名の対）を持つときだけ**（`resolve_pair`）。名前だけで比べると、分類群をまたぐ同名異物に別の生物の判定を当ててしまう（`ツルタケ` は YList ではタケのシノニム、Wikidata では菌類の `Amanita vaginata` の有効名。名前で比べていた版ではキノコの和名が消えていた）。このとき組の和名・学名の有効性は上位のその組での判定に置き換え（上位が複数あって割れたら、どれかが有効なら有効）、**2列目がその組で無効なら行を落とす**（「2列目にシノニムは現れない」を組の単位で守る）。同じ組を上位も残していれば下位の行は上位に譲る。実測で落とすのは j2s 40 行・s2j 1,932 行。
   - かつては全ディレクトリを「狭さ→新しさ→定義順」で比べ、名前ごとに有効性を1つに決めていた。和名を失う学名が262件出た（`ツルタケ` のほか、YList が蘚類のリストに新しさで勝って `アオイトゴケ` を消すなど）ので廃止した。**再導入しないこと。**
   - 集計の「ディレクトリ内で有効性が食い違った名前」は現データで 5（本来は 0）。第2段の出力に由来する（体系の導入前の版でも同じ値）。
 - **同じ名前でも `taxondir` によって有効性のフラグが違うことがある**（`アオイトゴケ / Anomodon minor` は Bryophytes で有効、VascularPlants でシノニム）。AllTaxa では、上位が同じ組を持つ行だけ判定が置き換わるので、同じディレクトリ内でもフラグが行ごとに違いうる。
 - **スキーマ**: `japname2sciname(japname, sciname, japvalid, rank, subrank, sourcetitle, sourceauthor, sourceurl, taxondir)` と `sciname2japname`（1〜3列目が `sciname, japname, scivalid`）。同じ組がディレクトリごとに別の行になる（j2s で 1,839 組）ので、**主キーは `(1列目, 2列目, taxondir)`**。2列目に索引。`taxondir` は行の由来の分類群ディレクトリ。照合は既定の `BINARY` のまま——前方一致は `>= ? AND < ?` の範囲検索で主キーの索引を使える。補助に `rank(rank, name)`（`rank.def` をそのまま。1つの番号に複数の名前）と `meta(key, value)`（`version` / `builddate`）。
 - **体系の表**（入れる範囲は**全部**。ユーザー決定。不要になったら完成後に削除する）:
-  - `hierarchy_col(id PK, parent, status, rank, name, authorship, alternativeid, namealternativeid)` — `NameUsage.tsv` の全行（8,479,599）。シノニムの `parent` は有効名を指す（ColDP の定義のまま）。`status` は 1＝有効名（accepted / provisionally accepted）、0＝それ以外。`rank` と `name` は CoL の表記のまま（`rank.def` にない階級が CoL だけで58種類ある）。`name` と `parent` に索引。
+  - `hierarchy_col(id PK, parent, status, rank, name, authorship, alternativeid, namealternativeid)` — `NameUsage.tsv` の全行（8,504,545）。シノニムの `parent` は有効名を指す（ColDP の定義のまま）。`status` は 1＝有効名（accepted / provisionally accepted）、0＝それ以外。`rank` と `name` は CoL の表記のまま（`rank.def` にない階級が CoL だけで58種類ある）。`name` と `parent` に索引。
   - `hierarchy_ncbi(taxid PK, parent, rank)`（`parent` に索引）・`names_ncbi(taxid, name, class)`（authority・type material も含む全 class、`name` と `taxid` に索引）・`merged_ncbi(old_taxid PK, new_taxid)`。
-  - `association_col_ncbi(colid, taxid, method)`（主キー `(colid, taxid)`、`taxid` に索引）— CoL の**有効名の**節点と NCBI の節点の対応。根拠の `method` は優先順に `ncbi`（CoL の alternativeID の `ncbi:txid…`。`txid` を外す。4,960）・`wikidata`（alternativeID の `wikidata:Q…` を `qid2ncbi` で引く。397,557）・`name`（196,660）。
+  - `association_col_ncbi(colid, taxid, method)`（主キー `(colid, taxid)`、`taxid` に索引）— CoL の**有効名の**節点と NCBI の節点の対応。根拠の `method` は優先順に `ncbi`（CoL の alternativeID の `ncbi:txid…`。`txid` を外す。4,947）・`wikidata`（alternativeID の `wikidata:Q…` を `qid2ncbi` で引く。413,185）・`name`（188,294）。
     - `name` は、1・2で対応の付いていない NCBI の節点の scientific name と、対応の付いていない CoL の有効名の学名が一致し、**NCBI 側で最も近い対応済みの祖先に対応する CoL の節点が、CoL 側の候補の祖先にいる**ものだけ。NCBI の節点を浅い順に見るので、ここで付けた対応も下の節点の祖先として使われる。「どこかの祖先が対応していればよい」にすると、界をまたぐ同名異物（`Prunella` の鳥と植物）がどちらも真核生物の下で通ってしまう。
   - `taxonlink(japname, sciname, taxondir, colid, colmethod, ncbiid, ncbimethod)`（主キー `(japname, sciname, taxondir)`、`colid` と `ncbiid` に索引）— 最終2表の組をディレクトリごとに1行。**キーに和名を含める**（`Prunella` は和名との組で鳥（`イワヒバリ属` `カヤクグリ属`）か植物（`ウツボグサ属`）かが決まる）。`colid` は CoL の有効名の節点（シノニムの ID は parent を辿る）、`ncbiid` は NCBI の現行の節点（`merged.dmp` で統合先に直す）。根拠の列 `colmethod` / `ncbimethod` を持つ（ユーザー決定）。
 - **`taxonlink` の解き方**（`resolve_link`）。体系ごとに次の順で試し、決まったところで止める。
@@ -271,7 +272,7 @@ shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（�
   4. `association` — 片方だけ決まったとき、`association_col_ncbi` の対応がただ1つならそれで補う。
   - 候補が複数なら**手がかりの名前**——`sources.tsv` の `root`、taxonhint の `anc`、`wdparent` の QID が指す節点の学名——が祖先（自身を含む）に最も多く当たる、ただ1つの候補を採る。
   - **3（名前だけの一致）は、手がかりがあるのに候補の祖先に1つも当たらなければ候補が1つでも採らない**（ユーザー決定）。incertae sedis で系統が切れている正しい組も落ちるが、CoL に片方しか無い同名異物（`Acontiinae` は Insects ではガの亜科なのに CoL のものは別物、`Pieris japonica` のチョウ）を誤った節点に結ぶよりよい。検索側は手がかりの当たる候補が他に無ければ絞り込まないので、取りこぼしの害は小さい。1・2（ID の指定）にはこの制限をかけない。手がかりの無いソース（AllTaxa の col・wikidata の一部）は候補がただ1つなら採る。
-  - 実測（204,256 組）: colid は id 63,739 / wikidata 9,638 / name 106,009 / association 2,775 / なし 22,095、ncbiid は id 24,500 / name 115,432 / association 3,979 / なし 60,345（wikidata が 0 なのは、P685 を持つ項目は第2段が `ncbi:` も手がかりに入れているため）。独立に決めた colid と ncbiid が対応表と食い違う組が約1,000あるが、多くは CoL がシノニムとして畳んだ学名を NCBI が別の節点として持つもので、体系どうしの見解の違い。
+  - 実測（206,111 組）: colid は id 65,694 / wikidata 9,993 / name 105,894 / association 2,676 / なし 21,854、ncbiid は id 24,552 / name 116,981 / association 4,054 / なし 60,524（wikidata が 0 なのは、P685 を持つ項目は第2段が `ncbi:` も手がかりに入れているため）。独立に決めた colid と ncbiid が対応表と食い違う組が約1,000あるが、多くは CoL がシノニムとして畳んだ学名を NCBI が別の節点として持つもので、体系どうしの見解の違い。
 - **参照データ**は `AllTaxa/NameUsage.tsv`・`NCBITaxonomy/nodes.dmp` `names.dmp` `merged.dmp`・`AllTaxa/qid2ncbi_VERSION_BUILDDATE.tsv`。**1回だけ**読み、DB の表に入れると同時にメモリ上の表（`$R`）を作って結び付けを解く（行ごとに SQL を投げるより速く、二度読みもない）。`--only` に関わらず読む。**1つでも無ければ DB を作らない**（ユーザー決定。入力 TSV の欠けと同じ扱い）。
   - **decode せずバイト列のまま扱い、DB にもバイト列のまま入れる。** そのため接続は `sqlite_unicode` を使わず、既存の2表・`rank`・`meta` は `Encode::encode('UTF-8', …)` してから入れる（文字列とバイト列を混ぜて `sqlite_unicode` で入れると化ける）。読む側は `sqlite_unicode => 1` で読めばよい。
   - 学名の突き合わせには第2段と同じ正規化を通す（`ref_sciname_bytes`。`generate_tables.pl` の `ref_sciname_bytes` 一式の写し。**第2段を直したらこちらも直す**）。DB の `name` 列は正規化前の表記のまま。
@@ -409,7 +410,7 @@ shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（�
 
 **`sourcetitle` の末尾には版を ` (…)` で付ける**（半角括弧、前に半角空白）。`sources.tsv` の `edition` 列で指定し、`display_title()` が組み立てる。
 
-- 旧版も最新版も固定 URL があるもの → 版の名前（`日本産魚類全種目録 (2026年8月27日版)` `Catalogue of Life (2026-09-25 XR)`）。CoL の提供元ごとの表題には `(Catalogue of Life 2026-09-25 XR)` を付ける（`parse_col`。iNaturalist の判定は版を付ける前の表題で行う）。
+- 旧版も最新版も固定 URL があるもの → 版の名前（`日本産魚類全種目録 (2026年10月25日版)` `Catalogue of Life (2026-10-16 XR)`）。CoL の提供元ごとの表題には `(Catalogue of Life 2026-10-16 XR)` を付ける（`parse_col`。iNaturalist の判定は版を付ける前の表題で行う）。
 - DOI があるもの、Web Archive の特定の日のスナップショット → 何も付けない（`edition` を書かない）。ハネカクシ・有剣膜翅類・FernGreenList・Hattoria 2件。
 - それ以外（継続更新のサイト） → `edition => 'accessed'` で `(Accessed on YYYY-MM-DD)`。日付は入力ファイルの mtime の最大値をローカル時刻の日付にしたもの（`fetch_data.pl` の curl は `--remote-time` を付けないので mtime がそのまま取得日になる）。入力ファイルが無ければ何も付けない。
 - 出典の表記は `merge.fp` の指紋に入るので、版や取得日が変われば統合をやり直す。

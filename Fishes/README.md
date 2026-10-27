@@ -6,7 +6,7 @@
 
 | ファイル | 形式 | 情報源 |
 |---|---|---|
-| `20260827_JAFList.xlsx` | Excel | `https://www.museum.kagoshima-u.ac.jp/staff/motomura/20260827_JAFList.xlsx` |
+| `20261025_JAFList.xlsx` | Excel | `https://www.museum.kagoshima-u.ac.jp/staff/motomura/20261025_JAFList.xlsx` |
 
 案内ページは https://www.museum.kagoshima-u.ac.jp/staff/motomura/jaf.html 。
 

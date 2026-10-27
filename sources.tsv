@@ -43,11 +43,11 @@ AllTaxa	ksn_zenseibutsu	alltaxa	0	2025	令和元年度〜令和7年度版	河川
 # Catalogue of Life: ColDP の書庫は 5.6GB・21,425 ファイルある。必要な2つだけ
 # 展開し、source/*.yaml は書庫から直接読む。metadata.yaml の creator は50名以上
 # いるが、format_authors が3名以上を「先頭 et al.」に畳むので先頭3名だけを持つ。
-AllTaxa	col	col	0	2026	2026-09-25 XR	Catalogue of Life	Olaf Bánki|Yury Roskov|Markus Döring	https://download.checklistbank.org/col/monthly/2026-09-25_xr_coldp.zip	NameUsage.tsv|VernacularName.tsv	2026-09-25_xr_coldp.zip|NameUsage.tsv	NameUsage.tsv|VernacularName.tsv			Catalogue of Life (2026-09-25 XR)
+AllTaxa	col	col	0	2026	2026-10-16 XR	Catalogue of Life	Olaf Bánki|Yury Roskov|Markus Döring	https://download.checklistbank.org/col/monthly/2026-10-16_xr_coldp.zip	NameUsage.tsv|VernacularName.tsv	2026-10-16_xr_coldp.zip|NameUsage.tsv	NameUsage.tsv|VernacularName.tsv			Catalogue of Life (2026-10-16 XR)
 AllTaxa	wikidata	wikidata	0	2026	accessed	Wikidata	Wikidata contributors	https://www.wikidata.org/	wikidata.csv					Wikidata 学名・和名対応 (QLever で取得した CSV)
 Mammals	mammal_society	mammals	8	2021	20211223版	世界哺乳類標準和名リスト	川田 伸一郎|岩佐 真宏|福井 大|新宅 勇太|天野 雅男|下稲葉 さやか|樽 創|姉崎 智子|鈴木 聡|押田 龍夫|横畑 泰志	https://www.mammalogy.jp/list/index.html	list_20211223/list_20211223.xlsx	list_20211223.zip|list_20211223/list_20211223.xlsx			Mammalia	世界哺乳類標準和名リスト (2021年度版)
 Reptiles_Amphibians	herpetology_jp	herpetology	8	2026	accessed	日本産爬虫両生類標準和名リスト	日本爬虫両棲類学会	https://herpetology.jp/wamei/index_j.php	index_j.html				Reptilia|Amphibia|Lepidosauria|Testudines|Crocodylia	日本産爬虫両生類標準和名リスト
-Fishes	jaflist	jaflist	8	2026	2026年8月27日版	日本産魚類全種目録	本村 浩之	https://www.museum.kagoshima-u.ac.jp/staff/motomura/jaf.html	20260827_JAFList.xlsx				Actinopterygii|Chondrichthyes|Myxini|Petromyzonti|Hyperoartia	日本産魚類全種目録 (JAF List)
+Fishes	jaflist	jaflist	8	2026	2026年10月25日版	日本産魚類全種目録	本村 浩之	https://www.museum.kagoshima-u.ac.jp/staff/motomura/jaf.html	20261025_JAFList.xlsx				Actinopterygii|Chondrichthyes|Myxini|Petromyzonti|Hyperoartia	日本産魚類全種目録 (JAF List)
 Insects	naro_insecta	naro	8	2018	accessed	昆虫情報データベース	国立研究開発法人農業・食品産業技術総合研究機構 農業環境変動研究センター 環境情報基盤研究領域 昆虫分類評価ユニット	https://insect-web.rad.naro.go.jp/flame/tree	naro_insecta_page*.html				Insecta	昆虫情報データベース (Insecta)
 Insects	shigainsect	shigainsect	8	2025	accessed	滋賀県昆虫目録2025	滋賀県昆虫目録作成グループ	https://sites.google.com/view/shigainsect/	shigainsect_*.tsv				Hexapoda	滋賀県昆虫目録2025 (目別 TSV)
 Insects	listmj	listmj	14	2021	2021.6.3版	List-MJ 日本産蛾類総目録	神保 宇嗣	http://listmj.mothprog.com/	ListMJ3-*.xlsx				Lepidoptera	List-MJ 日本産蛾類総目録

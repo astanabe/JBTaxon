@@ -837,7 +837,10 @@ sub add_infraspecific_japnames {
     my ($dir, $validity, $colv, $adopt_s2j, $take) = @_;
     my $species = rk('species');
     my %add;
-    for my $key (keys %$adopt_s2j) {
+    # キーの順に回す。同じソースの下位分類群が複数あると狭さ・新しさ・定義順が
+    # 同点になり、adopt は先に来た方を採るので、ハッシュの順だと実行のたびに
+    # 出典が入れ替わる (CoL の Strix uralensis momiyamae / hondoensis)。
+    for my $key (sort keys %$adopt_s2j) {
         my $c = $adopt_s2j->{$key};
         next unless $c->{rank} > $species;
         next unless valid_of($validity, "s\t$c->{sci}");
@@ -1297,16 +1300,22 @@ sub resolve_files {
 }
 
 # zip が置かれていれば展開する。展開先は zip と同じディレクトリ。
-# 期待するファイルが既にあればスキップし、--force で再展開する。
+# 期待するファイルが zip より新しければ展開済みとしてスキップし、--force で再展開する。
+# 存在だけで判定すると、版を上げて新しい zip を置いても (CoL の 2026-09-25 XR →
+# 2026-10-16 XR) 古い版から展開したファイルを読み続けてしまう。
 sub expand_zip {
     my ($src, $dir) = @_;
     my ($zippat, $wantpat) = @{ $src->{unzip} };
 
-    my @want = resolve_files({ files => [ $wantpat ] }, $dir);
-    return if @want && !$force;
-
     my @zips = resolve_files({ files => [ $zippat ] }, $dir);
     return unless @zips;
+
+    my @want = resolve_files({ files => [ $wantpat ] }, $dir);
+    if (@want && !$force) {
+        my ($zip_mtime) = sort { $b <=> $a } map { (stat $_)[9] } @zips;
+        my ($want_mtime) = sort { $a <=> $b } map { (stat $_)[9] } @want;
+        return if $want_mtime >= $zip_mtime;
+    }
 
     for my $zip (@zips) {
         my $n = eval { unzip_into($zip, $dir, $src->{unzip_only}) };
@@ -1337,11 +1346,14 @@ sub unzip_into {
         my $out = File::Spec->catfile($dest, split m{/}, $name);
         my $odir = dirname($out);
         make_path($odir) unless -d $odir;
-        open my $fh, '>', $out or die "書き込めません: $out: $!\n";
+        # .part に書いてから rename する。中断で切り詰められたファイルが残ると、
+        # zip より新しいので展開済みと誤認される。
+        open my $fh, '>', "$out.part" or die "書き込めません: $out.part: $!\n";
         binmode $fh;
         my $buf;
         print $fh $buf while $z->read($buf) > 0;
-        close $fh;
+        close $fh or die "書き込めません: $out.part: $!\n";
+        rename "$out.part", $out or die "rename できません: $out: $!\n";
         $n++;
     }
     $z->close;

@@ -74,11 +74,11 @@ my @SOURCES = (
     },
     {   dir  => 'AllTaxa',
         type => 'file',
-        desc => 'Catalogue of Life (2026-09-25 XR)',
+        desc => 'Catalogue of Life (2026-10-16 XR)',
         # ChecklistBank が月次で置いている ColDP の配布ファイル。
-        # 約1.42GB あるので取得に時間がかかる。展開は generate_tables.pl の仕事。
-        files => [ [ 'https://download.checklistbank.org/col/monthly/2026-09-25_xr_coldp.zip',
-                     '2026-09-25_xr_coldp.zip' ] ],
+        # 約1.4GB あるので取得に時間がかかる。展開は generate_tables.pl の仕事。
+        files => [ [ 'https://download.checklistbank.org/col/monthly/2026-10-16_xr_coldp.zip',
+                     '2026-10-16_xr_coldp.zip' ] ],
     },
     {   dir   => 'AllTaxa',
         type  => 'sparql',
@@ -102,8 +102,8 @@ my @SOURCES = (
     {   dir  => 'Fishes',
         type => 'file',
         desc => '日本産魚類全種リスト',
-        files => [ [ 'https://www.museum.kagoshima-u.ac.jp/staff/motomura/20260827_JAFList.xlsx',
-                     '20260827_JAFList.xlsx' ] ],
+        files => [ [ 'https://www.museum.kagoshima-u.ac.jp/staff/motomura/20261025_JAFList.xlsx',
+                     '20261025_JAFList.xlsx' ] ],
     },
     {   dir  => 'Insects',
         type => 'naro',
