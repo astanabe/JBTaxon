@@ -59,7 +59,7 @@ Perlモジュールは`make installmod`・`make exec`でCPANから入れるこ�
 
 ## Makefile
 
-`perl`・`cpan`・Cコンパイラと、`curl`・`tar`・`pdftotext` (`poppler-utils`と`poppler-data`) があれば、`make`で生成から検索コマンドのインストールまでを行える。不足したPerlモジュールは`make`がCPANから入れるが、`curl`・`tar`・`pdftotext`はPerlモジュールではないので入れられない。前もってOSのパッケージなどで入れておくこと。
+`perl`・`cpan`・Cコンパイラと、`curl`・`tar`・`pdftotext` (`poppler-utils`と`poppler-data`) があれば、`make`で生成から検索コマンドのインストールまでを行える。不足したPerlモジュールは`make`がCPANから入れるが、`curl`・`tar`・`pdftotext`はPerlモジュールではないので入れられない。前もってOSのパッケージなどで入れておくこと。`make`は実行のたびに、まずこれらのコマンド (と`Makefile`自身が使う`find`・`install`など) を探し、1つでも無ければエラーで止まる (`make clean`・`make distclean`を除く)。CPANからモジュールを入れるときは、その前に`CPAN.pm`とCコンパイラがあるかも確かめる。`poppler-data`はコマンドではないので確かめない。
 
 ```
 make all       # installmod・exec・fetch・tsv・db を順に行う

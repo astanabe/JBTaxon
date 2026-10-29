@@ -39,6 +39,23 @@ COMMANDS := sciname2japname japname2sciname
 JBTAXON_DATADIR := $(DATADIR)/jbtaxon
 INSTALL ?= install
 
+# 動作環境のチェック。make を実行するたびに必要なコマンドを探し、無ければ止める
+# (pdftotext が無いと、約93分の fetch が終わった後の tsv で初めて止まるため)。
+# 前半はスクリプトが使うもの (curl・tar は fetch_data.pl、pdftotext は
+# generate_tables.pl)、後半はこの Makefile が使うもの。
+# clean と distclean は何も作らないので、コマンドが欠けていても消せるよう調べない。
+# poppler-data は (コマンドではないので) 調べない。
+REQUIRED_COMMANDS := curl tar pdftotext \
+	cat cmp chmod cp date find mkdir rm $(firstword $(INSTALL))
+NOCHECK_GOALS := clean distclean
+ifneq ($(filter-out $(NOCHECK_GOALS),$(or $(MAKECMDGOALS),all)),)
+MISSING_COMMANDS := $(foreach c,$(REQUIRED_COMMANDS),\
+	$(if $(shell /bin/sh -c 'command -v $(c)' 2>/dev/null),,$(c)))
+ifneq ($(strip $(MISSING_COMMANDS)),)
+$(error 必要なコマンドがありません: $(strip $(MISSING_COMMANDS)) (pdftotext は Debian/Ubuntu なら apt install poppler-utils poppler-data))
+endif
+endif
+
 # 必要な非コアモジュール (各スクリプトの @REQUIRED_MODULES と同じ)
 TABLES_MODULES := HTML::TreeBuilder HTML::TableExtract Text::CSV Encode::JIS2K
 DB_MODULES     := DBI DBD::SQLite
@@ -52,6 +69,15 @@ DBMODSTAGE := $(CURDIR)/build/dbmod
 
 # 引数のモジュールのうち読み込めないものを空白区切りで出す
 CHECKMOD = for (@ARGV) { eval "require $$_; 1" or print "$$_ " }
+
+# モジュールを CPAN から入れる前に、CPAN.pm と C コンパイラ ($(PERL) を作った
+# ときのもの。XS のモジュールがあるため) があるかを確かめる。入れるものが無ければ
+# 要らないので、起動時のチェックには入れない。
+CHECK_CPAN_TOOLS = $(PERL) -MCPAN -e 1 2>/dev/null \
+	    || { echo "$(PERL) に CPAN.pm がありません" >&2; exit 1; }; \
+	cc=`$(PERL) -MConfig -e 'print +(split " ", $$Config{cc})[0]'`; \
+	command -v "$$cc" >/dev/null \
+	    || { echo "C コンパイラ $$cc がありません (Perl の XS モジュールのビルドに要る)" >&2; exit 1; }
 
 # $(call cpan_install,入れる先,モジュール,追加の検索パス)
 # cpan は $(PERL) の CPAN.pm を使う (PATH の cpan が別の perl を指していることがあるため)。
@@ -99,6 +125,7 @@ installmod:
 	    echo "不足している Perl モジュールはありません"; exit 0; \
 	fi; \
 	echo "不足している Perl モジュール: $$missing"; \
+	$(CHECK_CPAN_TOOLS); \
 	$(call cpan_install,$(MODSTAGE),$$missing,$(LOCALLIB)); \
 	if [ -d $(MODSTAGE)/lib/perl5 ]; then \
 	    mkdir -p $(LOCALLIB) && cp -R $(MODSTAGE)/lib/perl5/. $(LOCALLIB)/; \
@@ -116,6 +143,7 @@ dbmod:
 	    echo "不足している DB 関連 Perl モジュールはありません"; exit 0; \
 	fi; \
 	echo "不足している DB 関連 Perl モジュール: $$missing"; \
+	$(CHECK_CPAN_TOOLS); \
 	$(call cpan_install,$(DBMODSTAGE),$$missing,); \
 	still=`$(PERL) -Mlib=$(DBMODSTAGE)/lib/perl5 -e '$(CHECKMOD)' $$missing`; \
 	if [ -n "$$still" ]; then \

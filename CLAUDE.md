@@ -308,6 +308,7 @@ shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（�
 
 `make all`（installmod・exec・fetch・tsv・db）と `make install`（installexec・installdata）。使い方は README の「Makefile」節。外せない点:
 
+- **実行のたびに `REQUIRED_COMMANDS`（`curl` `tar` `pdftotext` と Makefile が使うコマンド）を探し、無ければ `$(error)` で止める**（`pdftotext` が無いと約93分の fetch の後で初めて止まるため）。`clean` と `distclean` だけは調べない（`NOCHECK_GOALS`。欠けていても消せるように）。スクリプトに外部コマンドを足したらここにも足すこと。CPAN.pm と C コンパイラ（`$Config{cc}`）は、モジュールを入れるときだけ `CHECK_CPAN_TOOLS` で確かめる（apt でモジュールを入れた環境にコンパイラは要らないため）。
 - **不足モジュールは `$(PERL) -MCPAN` で入れる**（PATH の `cpan` が別の perl を指すことがあるため）。`INSTALL_BASE` は `lib/perl5` のほか `bin/` `man/` も作るので、`build/mod`・`build/dbmod` に入れてから `lib/perl5` だけを写す。CPAN は失敗しても終了コードを返さないことがあるので、入れた後に読み込めるかを確かめる。不足の判定は `-Mlib=`（`-I` はアーキテクチャ別のディレクトリを足さない）。
 - **`generate_tables.pl` と `generate_database.pl` は `use lib "$FindBin::RealBin/lib/perl5"` を持つ**（`make installmod` が入れる先。カレントディレクトリに依らない）。
 - **DB 関連モジュールを `$(DATADIR)` へ写すのは `installexec`**（`make exec` はビルドの段なので書き込み権限を要する場所に触れない）。
