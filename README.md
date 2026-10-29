@@ -52,7 +52,7 @@ Perl 5 (v5.38で動作を確認) のほかに、以下が必要。
 Debian/Ubuntuでまとめて入れる場合:
 
 ```
-apt install curl tar poppler-utils poppler-data libhtml-tree-perl libhtml-tableextract-perl libtext-csv-perl libencode-jis2k-perl libdbi-perl libdbd-sqlite3-perl
+sudo apt install curl tar poppler-utils poppler-data libhtml-tree-perl libhtml-tableextract-perl libtext-csv-perl libencode-jis2k-perl libdbi-perl libdbd-sqlite3-perl
 ```
 
 Perlモジュールは`make installmod`・`make exec`でCPANから入れることもできる (次節)。

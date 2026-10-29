@@ -52,7 +52,7 @@ ifneq ($(filter-out $(NOCHECK_GOALS),$(or $(MAKECMDGOALS),all)),)
 MISSING_COMMANDS := $(foreach c,$(REQUIRED_COMMANDS),\
 	$(if $(shell /bin/sh -c 'command -v $(c)' 2>/dev/null),,$(c)))
 ifneq ($(strip $(MISSING_COMMANDS)),)
-$(error 必要なコマンドがありません: $(strip $(MISSING_COMMANDS)) (pdftotext は Debian/Ubuntu なら apt install poppler-utils poppler-data))
+$(error 必要なコマンドがありません: $(strip $(MISSING_COMMANDS)) (pdftotext は Debian/Ubuntu なら sudo apt install poppler-utils poppler-data))
 endif
 endif
 

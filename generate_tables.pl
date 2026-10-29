@@ -1212,7 +1212,7 @@ sub check_dependencies {
     return unless @missing;
 
     print STDERR "generate_tables.pl の実行に必要なものが不足しています。\n\n";
-    printf STDERR "  %s (%s)\n    Debian/Ubuntu: apt install %s\n",
+    printf STDERR "  %s (%s)\n    Debian/Ubuntu: sudo apt install %s\n",
         $_->[0], $_->[2], $_->[1] for @missing;
     print STDERR "\nCPAN から入れる場合は cpanm "
         . join(' ', map { $_->[0] =~ /モジュール (\S+)/ ? $1 : () } @missing) . "\n";
