@@ -463,4 +463,4 @@ rankは各分類階層に割り当てられた以下の数値です。
 35. strain (株)
 36. isolate
 
-subrankは、基本的には値は1になりますが、上記分類階層に当てはまらない階層が、例えばfamilyとsuperfamilyの間にある場合に、その階層をrank=18,subrank=2とすることで、familyとsuperfamilyの間の階層であることを表します。間の階層が複数ある場合は、subrankを3、4、5…と増加させていきます。なお、上記のrankの値は変更されることがあります。rank値の定義は`rank.def`に記述してあります。
+subrankは、基本的には値は0になりますが、上記分類階層に当てはまらない階層が、例えばfamilyとsuperfamilyの間にある場合に、その階層をrank=18,subrank=1とすることで、familyとsuperfamilyの間の階層であることを表します。間の階層が複数ある場合は、subrankを2、3、4…と増加させていきます。つまりsubrankは、rankの階層から何段下の階層かを表します。なお、上記のrankの値は変更されることがあります。rank値の定義は`rank.def`に記述してあります。
