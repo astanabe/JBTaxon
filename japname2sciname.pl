@@ -36,11 +36,14 @@
 # 出力の形 (--mode):
 #   ADD     ... 「元の名前 (引いた名前)」。当たらなければ元の名前のまま
 #   CONVERT ... 引いた名前だけ。当たらなければ空
-# 「unidentified ～」は検索しない (ADD は元のまま、CONVERT は空)。空のセルは空のまま。
+#   NEWCOL  ... 元の列はそのままにし、引いた列の直後に「列名_引いた名前の種類」の列
+#               (sciname2japname.pl なら class_japname、japname2sciname.pl なら
+#               class_sciname) を足して、CONVERT と同じ形で書く。ファイルのときだけ
+# 「unidentified ～」は検索しない (ADD は元のまま、CONVERT・NEWCOL は空)。空のセルは空のまま。
 #
 # 種から下位の階層へ下げて引けたときは、クエリの CONVERT だけが下位の分類群の学名を
 # その階層名で返す (species:ヒメギフチョウ北海道亜種 → subspecies:Luehdorfia puziloi
-# yessoensis)。クエリの ADD とファイル (ADD・CONVERT) は、列や項目の階層に合わせて
+# yessoensis)。クエリの ADD とファイル (ADD・CONVERT・NEWCOL) は、列や項目の階層に合わせて
 # 種の学名に直して返す (species:ヒメギフチョウ北海道亜種 (Luehdorfia puziloi))。
 
 use strict;
@@ -100,7 +103,7 @@ my %SUPERIOR_DIRS = (
     'Lichens' => [ 'Seaweeds', 'Fungi' ],
 );
 
-my %MODES = map { $_ => 1 } qw(ADD CONVERT);
+my %MODES = map { $_ => 1 } qw(ADD CONVERT NEWCOL);
 
 #-----------------------------------------------------------------------------
 # CLI
@@ -123,7 +126,7 @@ GetOptions(
 usage(0) if $help;
 
 $mode = uc $mode;
-die_usage("--mode は ADD か CONVERT です: $mode") unless $MODES{$mode};
+die_usage("--mode は ADD か CONVERT か NEWCOL です: $mode") unless $MODES{$mode};
 die_usage('--db を指定して下さい。') unless defined $db_path;
 die_usage('クエリか、入力ファイルと出力ファイルを指定して下さい。') unless @ARGV;
 die_usage('引数が多すぎます (クエリは1つの引数に、ファイルは入力と出力の2つ)。') if @ARGV > 2;
@@ -436,7 +439,7 @@ sub species_of_infra {
     return join ' ', @t[ 0 .. $n - 1 ];
 }
 
-# 1つのセルを出力の形にする
+# 1つのセルを出力の形にする (NEWCOL は足した列に CONVERT と同じ形で書く)
 sub render {
     my ($orig, $found) = @_;
     if (!@$found) {
@@ -499,6 +502,7 @@ sub looks_like_query {
 
 sub run_query {
     my ($q) = @_;
+    die_usage('--mode=NEWCOL はファイルを与えたときだけ使えます。') if $mode eq 'NEWCOL';
     my @items = split_query($q);
     for my $it (@items) {
         die_usage("不明な階層名です: $it->[0] (rank.def の階層名を指定して下さい)")
@@ -576,30 +580,50 @@ sub run_file {
     my @rank_cols = sort { $a <=> $b } keys %col_rank;
     my @conv_cols = grep { !%target || $target{ $labels[$_] } } @rank_cols;
 
+    # NEWCOL では引いた列の直後に「列名_$T->{value}」の列を足す
+    my %newcol;
+    if ($mode eq 'NEWCOL') {
+        my %have = map { $_ => 1 } @labels;
+        for my $i (@conv_cols) {
+            my $label = "$labels[$i]_$T->{value}";
+            die_io("足す列と同じ名前の列が入力ファイルにあります: $label") if $have{$label};
+            $newcol{$i} = $label;
+        }
+    }
+
     my $part = "$out.part";
     open my $ofh, '>:encoding(UTF-8)', $part or die_io("出力ファイルを作れません: $part: $!");
-    print $ofh $header, "\n";
+    print $ofh join("\t", add_columns(\@labels, \%newcol)), "\n";
 
     my (%stat, %miss);
     while (my $line = <$ifh>) {
         $line = decode_line($line, $in, $.);
         my @f = split /\t/, $line, -1;
         my @hints = grep { defined && length } map { $f[$_] } @rank_cols;
+        my %cell;
         for my $i (@conv_cols) {
             my $v = $f[$i];
             next unless defined $v && length $v;
             if (is_unidentified($v)) {
-                $f[$i] = render($v, []);
+                $cell{$i} = render($v, []);
                 $stat{unidentified}++;
                 next;
             }
             # 下位の階層へ下げて引けたときは、列の階層 (種) に合わせて種の学名にする
             my ($found, $descended) = search($v, $col_rank{$i}, \@hints);
             $found = to_species($found) if defined $descended;
-            $f[$i] = render($v, $found);
+            $cell{$i} = render($v, $found);
             if (@$found) { $stat{found}++ } else { $stat{miss}++; $miss{$v} = 1 }
         }
-        print $ofh join("\t", @f), "\n";
+        if (%newcol) {
+            # 足す列のセルは、元の列が空か行が短くて無いときも空にする
+            my %add = map { $_ => $cell{$_} // '' } keys %newcol;
+            print $ofh join("\t", add_columns(\@f, \%add)), "\n";
+        }
+        else {
+            $f[$_] = $cell{$_} for keys %cell;
+            print $ofh join("\t", @f), "\n";
+        }
     }
     close $ifh;
     close $ofh or die_io("出力ファイルを書けません: $part: $!");
@@ -607,6 +631,20 @@ sub run_file {
 
     printf STDERR "%s: 引けたセル %d / 引けなかったセル %d (異なり %d) / unidentified %d\n",
         $out, $stat{found} || 0, $stat{miss} || 0, scalar(keys %miss), $stat{unidentified} || 0;
+}
+
+# 列 $i の直後に $add->{$i} を差し込んだ列の並びを返す (行が短ければ足りない列を空で埋める)
+sub add_columns {
+    my ($f, $add) = @_;
+    my ($last) = sort { $b <=> $a } keys %$add;
+    my $n = $#$f;
+    $n = $last if defined $last && $last > $n;
+    my @out;
+    for my $i (0 .. $n) {
+        push @out, $f->[$i] // '';
+        push @out, $add->{$i} if exists $add->{$i};
+    }
+    return @out;
 }
 
 # 入力の1行を UTF-8 として読む (改行と BOM を落とす)
@@ -664,9 +702,12 @@ $T->{keyword}に対応する有効な$T->{answer}を返します。
 
 オプション:
   --db=DBFILE          検索する DB (必須)
-  --mode=ADD|CONVERT   出力の形 (既定: ADD)
+  --mode=ADD|CONVERT|NEWCOL
+                       出力の形 (既定: ADD)
                          ADD     「元の名前 (引いた名前)」。引けなければ元のまま
                          CONVERT 引いた名前だけ。引けなければ空
+                         NEWCOL  元の列はそのままにし、直後に足した「列名_$T->{value}」
+                                 の列に CONVERT と同じ形で書く (ファイルのときだけ)
                        複数の名前が引けたら「,」で連結します
   --targetrank=NAME    引く列を階層名で限定する (ファイルのときだけ。カンマ区切り可、
                        複数指定可)

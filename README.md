@@ -341,7 +341,7 @@ sciname2japname.pl --db=DBFILE [オプション] 入力ファイル 出力ファ
 ```
 
 - `--db=DBFILE` — 検索するDB (`jbtaxon_VERSION_BUILDDATE.sqlite3`)。必須。`taxonlink`などの表を持たない古い版のDBはエラーになる。
-- `--mode=ADD|CONVERT` — 出力の形 (既定は`ADD`)。`ADD`は「元の名前 (引いた名前)」で、引けなければ元の名前のまま。`CONVERT`は引いた名前だけで、引けなければ空。複数の名前が引けたら`sort`した順に`,`で連結する。
+- `--mode=ADD|CONVERT|NEWCOL` — 出力の形 (既定は`ADD`)。`ADD`は「元の名前 (引いた名前)」で、引けなければ元の名前のまま。`CONVERT`は引いた名前だけで、引けなければ空。`NEWCOL`は元の列をそのまま残し、引いた列の直後に新しい列を足して、そのセルに`CONVERT`と同じ形で書く。足す列のラベルは、`sciname2japname.pl`では「元のラベル`_japname`」(`class`なら`class_japname`)、`japname2sciname.pl`では「元のラベル`_sciname`」(`class`なら`class_sciname`)。`NEWCOL`はファイルを与えたときだけ使える。複数の名前が引けたら`sort`した順に`,`で連結する。
 - `--targetrank=階層名` — 引く列を階層名で限定する (ファイルを与えたときだけ)。カンマ区切りでも、複数回指定してもよい。
 - `--overwrite` — 出力ファイルが既にあれば上書きする。
 
@@ -359,14 +359,14 @@ sciname2japname.pl --db=jbtaxon_X_Y.sqlite3 'class:Aves,genus:Prunella'
 
 ### ファイル
 
-1つ目が入力ファイル、2つ目が出力ファイル。クエリと同時には指定できない。入力ファイルはUTF-8のタブ区切りで、1行目のラベルが階層名の列のセルを引く (`japname2sciname.pl`ではラベルは英語の階層名、セルは和名)。ラベルが階層名でない列と1行目はそのまま出力する。空のセルは空のまま、`unidentified ～`は検索しない (`ADD`では元のまま、`CONVERT`では空)。出力ファイルはディレクトリが存在し、ファイルが無いこと (`--overwrite`なら上書き)。入力と同じファイルには書けない。
+1つ目が入力ファイル、2つ目が出力ファイル。クエリと同時には指定できない。入力ファイルはUTF-8のタブ区切りで、1行目のラベルが階層名の列のセルを引く (`japname2sciname.pl`ではラベルは英語の階層名、セルは和名)。ラベルが階層名でない列と1行目はそのまま出力する。空のセルは空のまま、`unidentified ～`は検索しない (`ADD`では元のまま、`CONVERT`と`NEWCOL`の足した列では空)。`NEWCOL`では`--targetrank`で限定した列にだけ列を足す。足す列と同じラベルの列が入力ファイルに既にあればエラーになる。出力ファイルはディレクトリが存在し、ファイルが無いこと (`--overwrite`なら上書き)。入力と同じファイルには書けない。
 
 ### 検索の規則
 
 1つの名前は次の順で絞り込む。
 
 1. 階層名のrankが一致する行があればそれだけを使い、無ければrankを問わない (上位の名前を下の列へ埋めた入力があるため)。比べるのはrankの番号で、subrankは見ない。
-   - `japname2sciname.pl`で階層がspeciesのときに限り、種の行が無ければ亜種・変種・品種…と1段ずつ下げ、行のある最初の階層の行を使う (種として引いた和名が亜種の和名であることがあるため)。下げて引けたとき、クエリの`CONVERT`はその階層名で下位の分類群の学名を返し (`species:ヒメギフチョウ北海道亜種` → `subspecies:Luehdorfia puziloi yessoensis`)、クエリの`ADD`とファイルは種の学名に直して返す (`species:ヒメギフチョウ北海道亜種 (Luehdorfia puziloi)`)。
+   - `japname2sciname.pl`で階層がspeciesのときに限り、種の行が無ければ亜種・変種・品種…と1段ずつ下げ、行のある最初の階層の行を使う (種として引いた和名が亜種の和名であることがあるため)。下げて引けたとき、クエリの`CONVERT`はその階層名で下位の分類群の学名を返し (`species:ヒメギフチョウ北海道亜種` → `subspecies:Luehdorfia puziloi yessoensis`)、クエリの`ADD`とファイル (`NEWCOL`を含む) は種の学名に直して返す (`species:ヒメギフチョウ北海道亜種 (Luehdorfia puziloi)`)。
 2. 1列目の名前が有効名である行があればそれだけを使う。
 3. 系統: 同じ行 (クエリなら他の項目) の名前が、候補の組に結び付いたCatalogue of LifeとNCBI Taxonomyの節点 (`taxonlink`) の祖先にいくつ含まれるかを数え、最も多いものだけを残す。どれも1つも当たらなければ絞り込まない。和名は先に`japname2sciname`で学名に直してから比べる。
 4. 分類群ディレクトリの上下関係: 残った候補に上位のディレクトリのもの (`AllTaxa`に対しては他の全て、`Lichens`に対しては`Seaweeds`と`Fungi`) があれば、下位のディレクトリのものは捨てる。
