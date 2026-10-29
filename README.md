@@ -31,9 +31,35 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
 7. `japname2sciname.pl`
   - 和名をクエリとして`jbtaxon_VERSION_BUILDDATE.sqlite3`のjapname2scinameテーブルを検索し、学名を返す
 
+## 動作環境
+
+Perl 5 (v5.38で動作を確認) のほかに、以下が必要。
+
+| 必要なもの | 使うスクリプト | 用途 | Debian/Ubuntuのパッケージ |
+|---|---|---|---|
+| `curl` | `fetch_data.pl` | データファイルのダウンロード | `curl` |
+| `tar` | `fetch_data.pl` | NCBI Taxonomyの書庫の展開 | `tar` |
+| `pdftotext` | `generate_tables.pl` | PDFからのテキスト抽出 (日本語のPDFを読むには`poppler-data`も要る) | `poppler-utils` `poppler-data` |
+| Perlモジュール `HTML::TreeBuilder` | `generate_tables.pl` | HTMLの入れ子構造の解析 | `libhtml-tree-perl` |
+| Perlモジュール `HTML::TableExtract` | `generate_tables.pl` | HTMLテーブルの列抽出 | `libhtml-tableextract-perl` |
+| Perlモジュール `Text::CSV` | `generate_tables.pl` | CSVの解析 | `libtext-csv-perl` |
+| Perlモジュール `Encode::JIS2K` | `generate_tables.pl` | JIS X 0213による和名の文字の検査 | `libencode-jis2k-perl` |
+| Perlモジュール `DBI` | `generate_database.pl`・`sciname2japname.pl`・`japname2sciname.pl` | データベースへの接続 | `libdbi-perl` |
+| Perlモジュール `DBD::SQLite` | `generate_database.pl`・`sciname2japname.pl`・`japname2sciname.pl` | SQLite3データベースの作成と読み込み | `libdbd-sqlite3-perl` |
+
+`fetch_data.pl`・`generate_dictionary.pl`・`add_to_yomi.pl`はPerlのコアモジュールだけで動く。各スクリプトは起動時に不足を検出し、入れ方を表示して終了する。
+
+Debian/Ubuntuでまとめて入れる場合:
+
+```
+apt install curl tar poppler-utils poppler-data libhtml-tree-perl libhtml-tableextract-perl libtext-csv-perl libencode-jis2k-perl libdbi-perl libdbd-sqlite3-perl
+```
+
+Perlモジュールは`make installmod`・`make exec`でCPANから入れることもできる (次節)。
+
 ## Makefile
 
-`perl`・`cpan`・Cコンパイラがあれば、`make`で生成から検索コマンドのインストールまでを行える。
+`perl`・`cpan`・Cコンパイラと、`curl`・`tar`・`pdftotext` (`poppler-utils`と`poppler-data`) があれば、`make`で生成から検索コマンドのインストールまでを行える。不足したPerlモジュールは`make`がCPANから入れるが、`curl`・`tar`・`pdftotext`はPerlモジュールではないので入れられない。前もってOSのパッケージなどで入れておくこと。
 
 ```
 make all       # installmod・exec・fetch・tsv・db を順に行う
