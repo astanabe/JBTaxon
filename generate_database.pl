@@ -70,6 +70,10 @@
 use strict;
 use warnings;
 use utf8;
+# make installmod が不足モジュールを入れるスクリプトの隣の lib/perl5 も見る
+# (カレントディレクトリに依らないよう FindBin で場所を決める)
+use FindBin;
+use lib "$FindBin::RealBin/lib/perl5";
 use Cwd qw(abs_path);
 use File::Basename qw(dirname);
 use Encode ();

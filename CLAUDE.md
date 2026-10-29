@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## リポジトリの現状
 
-現時点でこのリポジトリに存在するのは `README.md`・`rank.def`・`yomi.tsv`・`VERSION`・`sources.tsv`・`.gitignore`・`AllTaxa/wikidata.rq`、実装済みの7スクリプト（`fetch_data.pl`・`generate_tables.pl`・`generate_database.pl`・`generate_dictionary.pl`・`add_to_yomi.pl`・`sciname2japname.pl`・`japname2sciname.pl`）、および分類群ごとのディレクトリと `NCBITaxonomy/` に置いた `README.md` 17件。README.md は実装すべき仕様書として読むこと。ビルド・lint・テストの仕組みは未整備で、検証は `perl -c` と各スクリプトの `--list` / `--dry-run`、および実データでの実行と件数突き合わせで行っている。
+現時点でこのリポジトリに存在するのは `README.md`・`rank.def`・`yomi.tsv`・`VERSION`・`sources.tsv`・`.gitignore`・`AllTaxa/wikidata.rq`、`Makefile`、実装済みの7スクリプト（`fetch_data.pl`・`generate_tables.pl`・`generate_database.pl`・`generate_dictionary.pl`・`add_to_yomi.pl`・`sciname2japname.pl`・`japname2sciname.pl`）、および分類群ごとのディレクトリと `NCBITaxonomy/` に置いた `README.md` 17件。README.md は実装すべき仕様書として読むこと。ビルド・lint・テストの仕組みは未整備で、検証は `perl -c` と各スクリプトの `--list` / `--dry-run`、および実データでの実行と件数突き合わせで行っている。
 
 `sources.tsv` はリポジトリルートにある情報源の定義（1行1ソース、タブ区切り、先頭行が列名、`#` はコメント、配列は `|` 区切り、行の順番が定義順）。`generate_tables.pl` と `generate_database.pl` が共通に読む。`fetch_data.pl` の取得用の表（URL など）は別物で統合しない。`root` 列はそのソースが扱う分類群の根の学名（`|` 区切り、CoL と NCBI の名前を両方並べてよい、全生物を扱うソースは空欄）で、第2段は使わず、`taxonhint` の `sourceid` を通して第3段が同名異物を系統で絞るのに使う（ソースの定義はソースと統合の両方の指紋に入るので、値を変えると第2段は全部作り直しになるが出力は変わらない）。値はソースの有効な学名を CoL の系統で集計して決めた。範囲外にしか当たらない学名はどのソースも 0〜1.4% で、その大半は CoL で系統が `incertae sedis` で切れているものか、CoL に片方しか無い同名異物（`Acontiinae` `Pieris japonica`）。海藻の `Prasinodermatophyta`（NCBI は `Prasinodermophyta`）は、CoL が `Palmophyllum` を `Chlorophyta` の外に置くために足してある。
 
@@ -301,7 +301,21 @@ shigainsect（滋賀県昆虫目録2025）はかつて手動配置だった（�
   - 降りたときの出力: クエリの CONVERT だけが降りた先の階層名（`%RANK_LABEL`。rank.def でその番号の最初の名前）と下位の分類群の学名を返す（`subspecies:Luehdorfia puziloi yessoensis`）。クエリの ADD とファイル（ADD・CONVERT・NEWCOL）は項目や列の階層に合わせて `species_of_infra`（`generate_tables.pl` の写し）で種の学名に直す（`to_species`）。
 - 祖先の名前は**正規化前の表記**なので、`norm_sciname`（`generate_database.pl` の `ref_sciname_bytes` と同じ規則を文字列に当てたもの。**第2段を直したらこちらも直す**）を両側に通して比べる。祖先の集合は節点ごとに覚え、親の集合を共有して作る。検索結果も（名前, rank, 手がかり）でメモ化する。
 - 出力の形はユーザー決定のとおり。クエリは標準出力に1行で `階層名:結果` を `; ` で連結（有効名の連結に `,` を使うため）。CONVERT では `unidentified ～` は空。**`NEWCOL` は元の列を残し、引いた列の直後に `<ラベル>_japname`（`sciname2japname.pl`）/ `<ラベル>_sciname`（`japname2sciname.pl`。接尾辞は `%TABLE` の `value`）の列を足して CONVERT と同じ形で書く**。ファイルのときだけ使え（クエリでは exit 2）、足す列と同名の列が入力にあれば exit 2。`--targetrank` で限った列にだけ足す。出力ファイルは `.part` に書いてから rename する。終了コードは 0（引けない名前があっても 0）/ 2（使い方の誤り・入出力条件違反・DB を開けない）。
+- **`--db` は省ける。** 省くと `$DEFAULT_DBDIR` にある同じ版（`$SCRIPT_VERSION`）の `jbtaxon_VERSION_BUILDDATE.sqlite3` のうち BUILDDATE が最大のものを使う（`default_db`）。`make exec` が作るコマンドは `.pl` の先頭に `use lib '$(DATADIR)/jbtaxon/lib/perl5';` `my $version = '…';` `my $dbdir = '$(DATADIR)/jbtaxon';` を足したもので、`.pl` は `eval('$version')` / `eval('$dbdir')`（宣言が無ければ strict で undef）で読み、無ければスクリプトの隣の `VERSION` とスクリプトのディレクトリを使う。起動時に「コマンド名 版 (DB: パス)」を**標準エラー出力**に出す（標準出力は検索結果だけ）。
 - 実測（DB `0.1.2026.10.16`、サンプル3ファイル）: 各 0.1〜0.4 秒・RSS 約 20MB。引けない学名の多くは DB に有効な和名が無いもの（`Eukaryota` `Metazoa` `Teleostei` は和名がシノニムでしかない）と NCBI 独自の名前（`Euteleosteomorpha` `Tetradontoidea`）。複数の有効名が残るのは、同じ節点に別の和名が付いているもの（`Oncorhynchus` → `サケ属,タイヘイヨウサケ属`）で、同名異物ではない。
+
+### Makefile
+
+`make all`（installmod・exec・fetch・tsv・db）と `make install`（installexec・installdata）。使い方は README の「Makefile」節。外せない点:
+
+- **不足モジュールは `$(PERL) -MCPAN` で入れる**（PATH の `cpan` が別の perl を指すことがあるため）。`INSTALL_BASE` は `lib/perl5` のほか `bin/` `man/` も作るので、`build/mod`・`build/dbmod` に入れてから `lib/perl5` だけを写す。CPAN は失敗しても終了コードを返さないことがあるので、入れた後に読み込めるかを確かめる。不足の判定は `-Mlib=`（`-I` はアーキテクチャ別のディレクトリを足さない）。
+- **`generate_tables.pl` と `generate_database.pl` は `use lib "$FindBin::RealBin/lib/perl5"` を持つ**（`make installmod` が入れる先。カレントディレクトリに依らない）。
+- **DB 関連モジュールを `$(DATADIR)` へ写すのは `installexec`**（`make exec` はビルドの段なので書き込み権限を要する場所に触れない）。
+- **BUILDDATE は `make tsv` が `.builddate` に書き、`db`・`installdata` はそれを読む**（tsv と db が別の日でも日付が揃う）。`installdata` が入れるのは `jbtaxon_$(VERSION)_$(BUILDDATE).sqlite3` の1つだけ。
+- **`fetch` は失敗しても止めない**（リンク切れ2件のため `fetch_data.pl` は常に exit 1）。
+- 検索コマンドは `build/config`（PERL・DATADIR・VERSION）に依存し、値が変われば作り直す。
+- `clean` はコマンド・`lib/`・`build/`・`.builddate` だけを消し、取得データと TSV・DB は消さない。
+- `distclean` は `clean` に加え、`DATA_DIRS`（分類群ディレクトリと `NCBITaxonomy`。`.gitignore` の `/<分類群>/*` と同じ一覧）の中身と `jbtaxon_*.sqlite3` を消す。残すのは `README.md` と `KEEP_FILES`（`AllTaxa/wikidata.rq` と手動配置の情報源3件）。**分類群ディレクトリや手動配置の情報源を足したら `DATA_DIRS` / `KEEP_FILES` も直すこと。** ルート直下の手作りのもの（全分類群結合版の TSV・`temp.md`）と `generate_dictionary.pl` の出力は make が作らないので消さない。
 
 ### generate_dictionary.pl の実装契約
 

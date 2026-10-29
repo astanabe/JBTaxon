@@ -31,6 +31,27 @@ JBTaxonが情報源にしている生物種名チェックリストのうちの�
 7. `japname2sciname.pl`
   - 和名をクエリとして`jbtaxon_VERSION_BUILDDATE.sqlite3`のjapname2scinameテーブルを検索し、学名を返す
 
+## Makefile
+
+`perl`・`cpan`・Cコンパイラがあれば、`make`で生成から検索コマンドのインストールまでを行える。
+
+```
+make all       # installmod・exec・fetch・tsv・db を順に行う
+make install   # installexec・installdata を行う (書き込み先によっては sudo make install)
+```
+
+- `make installmod` — `generate_tables.pl`と`generate_database.pl`が使う不足したPerlモジュールを`./lib/perl5`へ入れる (両スクリプトはスクリプトの隣の`lib/perl5`を見る)
+- `make exec` — 検索コマンド`sciname2japname`・`japname2sciname`を作る。不足しているDB関連Perlモジュールは`build/dbmod`に用意し、`make installexec`で`$(DATADIR)/jbtaxon/lib/perl5`へ入れる
+- `make fetch` — `fetch_data.pl`を実行する。情報源側のリンク切れのため常に失敗が残るので、失敗しても止まらない。手動配置のファイル (哺乳類・コケ植物) は`make tsv`より前に置くこと
+- `make tsv` — `generate_tables.pl`を実行する。使ったBUILDDATEを`.builddate`に記録し、`make db`・`make installdata`が同じ日付を使う
+- `make db` — `generate_database.pl`を実行する
+- `make installexec` — 検索コマンドを`$(BINDIR)`へ、DB関連Perlモジュールを`$(DATADIR)/jbtaxon/lib/perl5`へ入れる
+- `make installdata` — `jbtaxon_VERSION_BUILDDATE.sqlite3`を`$(DATADIR)/jbtaxon`へ入れる
+- `make clean` — 検索コマンド・`lib/`・`build/`・`.builddate`を消す (取得したデータと生成したTSV・DBは消さない)
+- `make distclean` — `make clean`に加え、分類群ディレクトリと`NCBITaxonomy/`の中身 (取得したデータ・展開したファイル・生成したTSV・`.jbtaxon/`) と`jbtaxon_*.sqlite3`を全て消す。手動配置のファイル (`Mammals/list_20211223.zip`・`Bryophytes/7_9.pdf`・`Bryophytes/9_53.pdf`) と、リポジトリで追跡している`README.md`・`AllTaxa/wikidata.rq`は残す
+
+変数は`PREFIX` (既定 `/usr/local`)・`BINDIR`・`DATADIR`・`PERL`・`BUILDDATE`・`DESTDIR`。`make exec`と`make install`には同じ`PREFIX`を与えること (違えば検索コマンドを作り直す)。
+
 なお、種より上位の高次分類群(科や門など)や、種より下位の低次分類群(亜種・品種など)の和名・学名も生データファイルに含まれていれば出力します。
 
 ## 分類群和名の読みについて
@@ -336,11 +357,13 @@ yomi    lid    rid    cost    sciname    ENGLISH
 `sciname2japname.pl`は学名から有効な和名を、`japname2sciname.pl`は和名から有効な学名を引く。使い方は同じで、検索の向きだけが違う。
 
 ```
-sciname2japname.pl --db=DBFILE [オプション] クエリ
-sciname2japname.pl --db=DBFILE [オプション] 入力ファイル 出力ファイル
+sciname2japname.pl [--db=DBFILE] [オプション] クエリ
+sciname2japname.pl [--db=DBFILE] [オプション] 入力ファイル 出力ファイル
 ```
 
-- `--db=DBFILE` — 検索するDB (`jbtaxon_VERSION_BUILDDATE.sqlite3`)。必須。`taxonlink`などの表を持たない古い版のDBはエラーになる。
+`make exec`で作る`sciname2japname`・`japname2sciname`も同じ使い方。起動時に版と使うDBを標準エラー出力に表示する。
+
+- `--db=DBFILE` — 検索するDB (`jbtaxon_VERSION_BUILDDATE.sqlite3`)。省くと、スクリプトと同じ版のDBのうちBUILDDATEが最も新しいものを使う。探す場所は、`make exec`で作ったコマンドでは`$(DATADIR)/jbtaxon`、`.pl`を直接実行したときはスクリプトのディレクトリ。`taxonlink`などの表を持たない古い版のDBはエラーになる。
 - `--mode=ADD|CONVERT|NEWCOL` — 出力の形 (既定は`ADD`)。`ADD`は「元の名前 (引いた名前)」で、引けなければ元の名前のまま。`CONVERT`は引いた名前だけで、引けなければ空。`NEWCOL`は元の列をそのまま残し、引いた列の直後に新しい列を足して、そのセルに`CONVERT`と同じ形で書く。足す列のラベルは、`sciname2japname.pl`では「元のラベル`_japname`」(`class`なら`class_japname`)、`japname2sciname.pl`では「元のラベル`_sciname`」(`class`なら`class_sciname`)。`NEWCOL`はファイルを与えたときだけ使える。複数の名前が引けたら`sort`した順に`,`で連結する。
 - `--targetrank=階層名` — 引く列を階層名で限定する (ファイルを与えたときだけ)。カンマ区切りでも、複数回指定してもよい。
 - `--overwrite` — 出力ファイルが既にあれば上書きする。

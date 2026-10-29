@@ -59,6 +59,17 @@ binmode STDOUT, ':encoding(UTF-8)';
 binmode STDERR, ':encoding(UTF-8)';
 
 #-----------------------------------------------------------------------------
+# 版と DB の既定の場所
+#
+# make exec が作るコマンド (拡張子なし) は先頭に my $version と my $dbdir を
+# 足してある。足していない .pl を直接実行したときは、スクリプトの隣の VERSION と、
+# スクリプトのディレクトリ (generate_database.pl が DB を書く場所) を使う。
+# 文字列の eval は変数が宣言されていなければ (strict により) undef を返す。
+#-----------------------------------------------------------------------------
+my $SCRIPT_VERSION = eval('$version') // read_version();
+my $DEFAULT_DBDIR  = eval('$dbdir')   // dirname(abs_path($0));
+
+#-----------------------------------------------------------------------------
 # 検索の向き (sciname2japname.pl との違いはこの1行だけ)
 #-----------------------------------------------------------------------------
 my $DIRECTION = 'japname2sciname';
@@ -127,7 +138,8 @@ usage(0) if $help;
 
 $mode = uc $mode;
 die_usage("--mode は ADD か CONVERT か NEWCOL です: $mode") unless $MODES{$mode};
-die_usage('--db を指定して下さい。') unless defined $db_path;
+$db_path = default_db() unless defined $db_path;
+print STDERR basename($0) . " $SCRIPT_VERSION (DB: $db_path)\n";
 die_usage('クエリか、入力ファイルと出力ファイルを指定して下さい。') unless @ARGV;
 die_usage('引数が多すぎます (クエリは1つの引数に、ファイルは入力と出力の2つ)。') if @ARGV > 2;
 
@@ -666,6 +678,31 @@ sub decode_arg {
     return defined $s ? $s : $arg;
 }
 
+# スクリプトの隣の VERSION を読む (make exec で作ったコマンドでは使わない)
+sub read_version {
+    my $path = File::Spec->catfile(dirname(abs_path($0)), 'VERSION');
+    open my $fh, '<', $path or return 'unknown';
+    my $v = <$fh>;
+    close $fh;
+    $v = '' unless defined $v;
+    $v =~ s/\s+//g;
+    return length $v ? $v : 'unknown';
+}
+
+# --db を省いたときの DB。$DEFAULT_DBDIR にある、このスクリプトと同じ版の
+# jbtaxon_VERSION_BUILDDATE.sqlite3 のうち BUILDDATE が最も新しいもの。
+sub default_db {
+    my $prefix = "jbtaxon_${SCRIPT_VERSION}_";
+    my @found;
+    if (opendir my $dh, $DEFAULT_DBDIR) {
+        @found = sort grep { /\A\Q$prefix\E[0-9]{8}\.sqlite3\z/ } readdir $dh;
+        closedir $dh;
+    }
+    die_usage("--db を省きましたが、$DEFAULT_DBDIR に ${prefix}YYYYMMDD.sqlite3 がありません。")
+        unless @found;
+    return File::Spec->catfile($DEFAULT_DBDIR, $found[-1]);
+}
+
 sub die_usage {
     my ($msg) = @_;
     print STDERR "$msg\n\n";
@@ -683,8 +720,10 @@ sub usage {
     my $fh = $status ? *STDERR : *STDOUT;
     my $me = basename($0);
     print $fh <<"USAGE";
-使い方: $me --db=DBFILE [オプション] クエリ
-        $me --db=DBFILE [オプション] 入力ファイル 出力ファイル
+$me $SCRIPT_VERSION
+
+使い方: $me [--db=DBFILE] [オプション] クエリ
+        $me [--db=DBFILE] [オプション] 入力ファイル 出力ファイル
 
 jbtaxon_VERSION_BUILDDATE.sqlite3 の $DIRECTION テーブルを検索し、
 $T->{keyword}に対応する有効な$T->{answer}を返します。
@@ -701,7 +740,8 @@ $T->{keyword}に対応する有効な$T->{answer}を返します。
 系統の手がかりに使います。ラベルが階層名でない列と見出し行はそのまま出します。
 
 オプション:
-  --db=DBFILE          検索する DB (必須)
+  --db=DBFILE          検索する DB。省くと $DEFAULT_DBDIR の
+                       jbtaxon_${SCRIPT_VERSION}_YYYYMMDD.sqlite3 のうち最も新しいもの
   --mode=ADD|CONVERT|NEWCOL
                        出力の形 (既定: ADD)
                          ADD     「元の名前 (引いた名前)」。引けなければ元のまま

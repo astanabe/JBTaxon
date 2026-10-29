@@ -60,5 +60,13 @@
 /japname2sciname_*.tsv
 /sciname2japname_*.tsv
 
+# Makefile が作るもの (検索コマンド、ローカルに入れた Perl モジュール、作業用の
+# build/、tsv と db で日付を揃えるための .builddate)
+/sciname2japname
+/japname2sciname
+/lib/
+/build/
+/.builddate
+
 # 未実装のスクリプトの申し送りメモ。リポジトリには含めない。
 /temp.md
