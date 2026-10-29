@@ -45,6 +45,8 @@
 #                      yomi / lid / rid / cost / sciname / ENGLISH
 #     lid・rid は種以下 (亜種・変種など) なら「名詞,固有名詞,一般」、種より上なら
 #     「名詞,固有名詞,組織」の ID を --id-def で与えた Mozc の id.def から引く。
+#     rank 0 (体系でも階層が決まらなかったもの。ウイルスの株や亜型が多い) は
+#     「一般」にする (ユーザー決定)。
 #     cost は既定で 9999 (--japcost / --scicost)。
 # comment は「sourcetitle (sourceurl) by sourceauthor」。
 
@@ -415,7 +417,7 @@ sub collect_entries {
 sub format_line {
     my ($kind, $yomi, $name, $rank, $comment, $ids) = @_;
     if ($FMT->{system}) {
-        my $id = $rank >= $SPECIES_RANK ? $ids->{general} : $ids->{organization};
+        my $id = (!$rank || $rank >= $SPECIES_RANK) ? $ids->{general} : $ids->{organization};
         return $kind eq 'yomi2japname'
              ? join("\t", $yomi, $id, $id, $japcost, $name)
              : join("\t", $yomi, $id, $id, $scicost, $name, 'ENGLISH');

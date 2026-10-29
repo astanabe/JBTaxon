@@ -279,8 +279,9 @@ my @SOURCES = (
     {   dir  => 'NCBITaxonomy',
         type => 'file',
         # 種名チェックリストではなく、学名の有効性を判定するための参照データ。
-        # generate_tables.pl が1つの和名に複数の学名が併記された行を解決するのに
-        # 使う (GBIF Backbone Taxonomy で決まらなかったときの2段目)。
+        # generate_tables.pl が学名の有効性 (Catalogue of Life で決まらなかったときの
+        # 2段目) と rank の無い学名の階層を決めるのに使う。generate_database.pl は
+        # 体系の表 (hierarchy_ncbi など) に入れる。
         desc  => 'NCBI Taxonomy taxdump (学名の有効性判定用)',
         files => [ [ 'https://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz',
                      'taxdump.tar.gz' ] ],

@@ -400,6 +400,19 @@ sub to_species {
              map { my $sp = species_of_infra($_); defined $sp ? $sp : $_ } @$names ];
 }
 
+# ウイルス名か (generate_tables.pl の looks_virus_name の写し)。
+sub looks_virus_name {
+    my ($s) = @_;
+    return 0 unless defined $s && length $s;
+    return 1 if $s =~ /vir(?:us|oid|usoid)/i;
+    return 1 if $s =~ /\b(?:phages?|satellite)\b/i;
+    # 綴りに virus を含まない高次分類群 (「Adenoviridae」「Herpesvirales」)。ICTV の
+    # 門〜亜科の語尾を1語の学名に限って見る。レルム・亜レルム (-viria・-vira) は
+    # 昆虫や植物の属 (「Elviria」「Rovira」) にも当たるので見ない。
+    return 1 if $s =~ /\A[A-Z][a-z]+vir(?:icota|icotina|icetes|icetidae|ales|ineae|idae|inae)\z/;
+    return 0;
+}
+
 # 種内の下位分類群の学名から種の学名を取り出す (generate_tables.pl の
 # species_of_infra と同じ規則。「Acer pictum subsp. dissectum」→「Acer pictum」、
 # 「Luehdorfia puziloi yessoensis」→「Luehdorfia puziloi」)。取り出せなければ undef。
@@ -408,6 +421,9 @@ my $INFRA_CONNECTOR = qr/(?:subsp|ssp|var|subvar|f|forma|morph|nothosubsp|nothov
 sub species_of_infra {
     my ($sci) = @_;
     return undef unless defined $sci && $sci =~ /\A[A-Za-z .-]+\z/;
+    # ウイルスには厳密な二名法がないので、名前の形から種を取り出せない
+    # (「Merkel cell polyomavirus」が「Merkel cell」になる)
+    return undef if looks_virus_name($sci);
     my @t = split / /, $sci;
     for my $i (1 .. $#t - 1) {
         return undef if $t[$i] eq 'x' && ($i >= 2 || $t[ $i + 1 ] =~ /\A[A-Z]/);

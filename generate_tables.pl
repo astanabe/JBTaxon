@@ -147,6 +147,11 @@ my $JAP_HIGH_RANK_WORD_RE = join '|', sort { length($b) <=> length($a) }
 # 和名と学名が別の分類群を指しているとみなす階層の差
 my $RANK_WORD_GAP = 3;
 
+# 「種」「種群」は階級ではなく記述として使われるので、階層語として扱わない
+# (「トゲエラカゲロウ属の一種」「キヅタキジラミ近縁種」「シマドジョウ種群」)。
+# rank との突き合わせ (rank_word_gap) にも、rank の決定 (rank_of_names) にも使わない。
+my %JAP_RANK_WORD_LOOSE = map { $_ => 1 } ('種', '種群', '種亜群');
+
 
 # Catalogue of Life (ColDP) の分類階級と、有効名として扱わない status。
 # 「provisionally accepted」は暫定的な有効名なので有効名として扱う。
@@ -586,7 +591,7 @@ sub cleanup_intermediates {
 # Wikidata の QID と NCBI taxid の対応を持つディレクトリ (AllTaxa) は qid2ncbi も書く。
 #-----------------------------------------------------------------------------
 sub merge_directory {
-    my ($dir, $sources, $colv, $ncbiv, $accepted) = @_;
+    my ($dir, $sources, $colv, $ncbiv, $accepted, $rankres) = @_;
     my @have;
     for my $i (0 .. $#$sources) {
         my $src  = $sources->[$i];
@@ -612,16 +617,32 @@ sub merge_directory {
 
     # 第1周: 名前ごとの有効性を決める。ここでは狭さを見ず、最も新しいソースの
     # 判定だけを採る (CLAUDE.md の規定)。
-    my (%validity, @records);
+    my (%validity, @records, %n_rank0);
     for my $h (@have) {
         my $src = $h->{src};
         for my $r (read_intermediate($h->{path})) {
             my ($jap, $sci, $jv, $sv, $rank) = @$r;
+            # rank 0 (no rank) の学名は、体系を辿って決めた rank と subrank にする
+            # (external_validity)。add_pair では位置が分からず和名の階層語と
+            # 突き合わせられなかったので、ここで突き合わせて離れすぎていれば落とす。
+            if (!$rank) {
+                my $rr = $rankres->{$sci};
+                $n_rank0{left}++ unless $rr;
+                if ($rr) {
+                    ($rank, $r->[4], $r->[5]) = ($rr->[0], @$rr);
+                    $n_rank0{set}++;
+                    if (my $gap = rank_word_far($jap, $r->[4], $r->[5])) {
+                        $n_rank0{drop}++;
+                        push @{ $n_rank0{ex} }, "$jap / $sci ($gap 段)" if @{ $n_rank0{ex} || [] } < 5;
+                        next;
+                    }
+                }
+            }
             # 有効名の形をしていない和名はシノニム扱いにする (README の規定)。
             # 中間 TSV の japvalid はソースの判定なので、救済の段で使うために
             # 控えておき、レコードには形の判定を重ねた値を入れる。
             my $srcjv = $jv;
-            $jv = $r->[2] = ($jv && japname_valid_form($jap, $rank)) ? 1 : 0;
+            $jv = $r->[2] = ($jv && japname_valid_form($jap, $rank, $sci)) ? 1 : 0;
             # 和名は「(1) より狭い分類群のソース (2) 次いでより新しいソース」、
             # 学名は「より新しいソースか」だけで決める (README の規定)。
             update_validity(\%validity, "j\t$jap", $jv, $src, $h->{order}, 1);
@@ -629,6 +650,12 @@ sub merge_directory {
             push @records, [ $r, $h, $srcjv ];
         }
     }
+    logmsg('rank', sprintf('%s: rank の無いレコード %d 件の rank と subrank を体系から決めました'
+                            . ' (うち和名の階層と離れすぎて落としたもの %d 件%s) / 決まらなかったもの %d 件',
+                            $dir, $n_rank0{set} || 0, $n_rank0{drop} || 0,
+                            ($n_rank0{ex} ? ': ' . join(', ', @{ $n_rank0{ex} }) : ''),
+                            $n_rank0{left} || 0))
+        if %n_rank0;
 
     # 学名の有効性は Catalogue of Life を基本とする (README の規定)。CoL が知って
     # いる学名は CoL の判定で上書きし、CoL にない学名でソース間の判定が食い違って
@@ -702,15 +729,15 @@ sub merge_directory {
         $take->(\%adopt_j2s, "$jap\t$sci", $cand, $r) if $sv && $svalid;
         $take->(\%adopt_s2j, "$sci\t$jap", $cand, $r) if $jv && $jvalid && !$nos2j;
         next unless $sv && !$svalid && exists $fixed{$sci};
-        my ($aname, $arank) = @{ $fixed{$sci} };
+        my ($aname, $arank, $asubrank) = @{ $fixed{$sci} };
         my $fix = { %$cand, sci => $aname };
-        $fix->{rank} = $arank if defined $arank;
+        ($fix->{rank}, $fix->{subrank}) = ($arank, $asubrank || 1) if defined $arank;
         # 差し替えで rank が変わるので、和名の階層語との突き合わせをやり直す。
         # add_pair の検査はソースが付けた rank に対して済んでいるだけで、
         # external_validity の検査も**全ディレクトリ分の rank をまとめて**見て
         # いるため、同じ学名を別の階層で載せているソースがあるとすり抜ける
         # (「セドイデス節」は海藻リストが節、Catalogue of Life が亜科)。
-        next if rank_word_far($jap, $fix->{rank});
+        next if rank_word_far($jap, $fix->{rank}, $fix->{subrank});
         $take->(\%adopt_j2s, "$jap\t$aname", $fix, $r);
         next unless $jv && $jvalid && !$nos2j;
         # 和名が元の学名の音写でしかないなら、差し替え先の有効和名にはしない。
@@ -769,16 +796,16 @@ sub rescue_japnames {
         my ($jap, $sci, $jv, $sv, $rank, $subrank, $nos2j) = @$r;
         next if $nos2j || !$sv;
         next unless $jap =~ /(?:$JAP_RANK_WORD_RE)\z/;
-        my ($f, $frank);
-        if (valid_of($validity, "s\t$sci")) { ($f, $frank) = ($sci, $rank) }
+        my ($f, $frank, $fsub);
+        if (valid_of($validity, "s\t$sci")) { ($f, $frank, $fsub) = ($sci, $rank, $subrank) }
         elsif (exists $fixed->{$sci}) {
-            ($f, $frank) = @{ $fixed->{$sci} };
-            $frank = $rank unless defined $frank;
+            ($f, $frank, $fsub) = @{ $fixed->{$sci} };
+            ($frank, $fsub) = ($rank, $subrank) unless defined $frank;
             next if sciname_translit($jap, $sci) && !sciname_translit($jap, $f);
         }
         else { next }
         next if $has_s2j{$f};
-        next if rank_word_far($jap, $frank);
+        next if rank_word_far($jap, $frank, $fsub);
         $cand{$f}{ $srcjv ? 1 : 2 }{$jap} = 1;
     }
     return {} unless %cand;
@@ -797,9 +824,9 @@ sub rescue_japnames {
         my ($r, $h) = @$e;
         my ($jap, $sci, $jv, $sv, $rank, $subrank, $nos2j, $st, $sa, $su) = @$r;
         next if $nos2j;
-        my ($f, $frank);
-        if (valid_of($validity, "s\t$sci")) { ($f, $frank) = ($sci, $rank) }
-        elsif (exists $accepted->{$sci})      { ($f, $frank) = @{ $accepted->{$sci} } }
+        my ($f, $frank, $fsub);
+        if (valid_of($validity, "s\t$sci")) { ($f, $frank, $fsub) = ($sci, $rank, $subrank) }
+        elsif (exists $accepted->{$sci})      { ($f, $frank, $fsub) = @{ $accepted->{$sci} } }
         else { next }
         next unless $rescued{"$jap\t$f"};
         my $cand = { sci => $sci, jap => $jap, rank => $rank, subrank => $subrank,
@@ -807,10 +834,11 @@ sub rescue_japnames {
                      st => $st, sa => $sa, su => $su };
         $take->($adopt_s2j, "$sci\t$jap", $cand, $r);
         next if $f eq $sci;
-        $frank = $rank unless defined $frank;
-        next if rank_word_far($jap, $frank);
+        ($frank, $fsub) = ($rank, $subrank) unless defined $frank;
+        $fsub ||= 1;
+        next if rank_word_far($jap, $frank, $fsub);
         next if sciname_translit($jap, $sci) && !sciname_translit($jap, $f);
-        $take->($adopt_s2j, "$f\t$jap", { %$cand, sci => $f, rank => $frank }, $r);
+        $take->($adopt_s2j, "$f\t$jap", { %$cand, sci => $f, rank => $frank, subrank => $fsub }, $r);
     }
     logmsg('rescue', sprintf('%s: 有効な和名のない学名 %d 件に、階層語で終わる和名を有効名として'
                              . '採りました (ソースの代表 %d 件 / ソースのシノニム %d 件)',
@@ -928,7 +956,8 @@ sub merge_fingerprint {
         push @parts, join(':', 'qid2ncbi', $q[7], $q[9]) if @q;
     }
     for my $ref (File::Spec->catfile($basedir, 'AllTaxa', 'NameUsage.tsv'),
-                 File::Spec->catfile($basedir, 'NCBITaxonomy', 'names.dmp')) {
+                 File::Spec->catfile($basedir, 'NCBITaxonomy', 'names.dmp'),
+                 File::Spec->catfile($basedir, 'NCBITaxonomy', 'nodes.dmp')) {
         my @st = stat $ref;
         push @parts, join(':', basename($ref), (@st ? ($st[7], $st[9]) : ('', '')));
     }
@@ -1951,11 +1980,40 @@ sub split_japnames {
     return @out;
 }
 
-# 学名の形から rank を推定する。複合表記 (var. の下の f. など) は
+# ウイルス名か (全ソース共通。rawsci の扱いと rank の決め方に使う)。
+#
+# ウイルスの学名は旧 ICTV 式の英語名で書かれていることがある
+# (「Influenza A virus」「West Nile virus」「Macacine herpesvirus 1」)。
+# norm_sciname の「名前らしいトークンだけ採る」規則は2語目以降の大文字始まりや
+# 数字で打ち切るので、そのままでは「Influenza」「West」「Macacine herpesvirus」に
+# なってしまう。ICTV の xlsx と同じ rawsci の扱いにするため、ウイルス系の名前を
+# 見分ける。語の途中に現れる綴りも拾うので ICTV の二名法
+# (「Alphainfluenzavirus influenzae」) もこちらを通るが、norm_sciname が
+# 切り詰めない形なので結果は変わらない。
+# **レルムや界の語尾 (-viria / -virae) は見ない。** 単語1語なので rawsci にする
+# 必要がなく、入れると「Coralliophila elvirae」のような種小名に当たってしまう。
+sub looks_virus_name {
+    my ($s) = @_;
+    return 0 unless defined $s && length $s;
+    return 1 if $s =~ /vir(?:us|oid|usoid)/i;
+    return 1 if $s =~ /\b(?:phages?|satellite)\b/i;
+    # 綴りに virus を含まない高次分類群 (「Adenoviridae」「Herpesvirales」)。ICTV の
+    # 門〜亜科の語尾を1語の学名に限って見る。レルム・亜レルム (-viria・-vira) は
+    # 昆虫や植物の属 (「Elviria」「Rovira」) にも当たるので見ない。
+    return 1 if $s =~ /\A[A-Z][a-z]+vir(?:icota|icotina|icetes|icetidae|ales|ineae|idae|inae)\z/;
+    return 0;
+}
+
+# 学名の形から種以下の rank を決める。**学名の形が階層を表すのは種以下だけ**
+# なので、種より上の階層は決めない (1語の学名や、節・列のような属内の階級の
+# 接続語を持つ学名は no rank を返す)。学名の語尾 (-idae・-ales など) から
+# 階層を推すこともしない (ユーザー決定)。複合表記 (var. の下の f. など) は
 # 最後に現れたマーカで決める。
 sub rank_from_sciname {
     my ($s) = @_;
     return (rk('no rank'), 1) unless defined $s && length $s;
+    return (rk('no rank'), 1)
+        if $s =~ /(?:\A|\s)(?:sect|subsect|ser|subser|subg|subgen)\.(?=\s|\z)/;
     my $last_rank;
     my $pos = -1;
     my %marker = (
@@ -1963,9 +2021,8 @@ sub rank_from_sciname {
         'var.'   => 'varietas',   'nothovar.' => 'varietas',
         'subvar.' => 'subvariety',
         'f.'     => 'forma',
-        'sect.'  => 'section',
     );
-    while ($s =~ /(?:\A|\s)((?:notho)?(?:subsp|ssp|var|subvar|f|sect)\.)(?=\s)/g) {
+    while ($s =~ /(?:\A|\s)((?:notho)?(?:subsp|ssp|var|subvar|f)\.)(?=\s)/g) {
         my $m = $1;
         next unless exists $marker{$m};
         if (pos($s) > $pos) { $pos = pos($s); $last_rank = $marker{$m} }
@@ -1981,21 +2038,34 @@ sub rank_from_sciname {
     pop @tok while @tok > 2 && $tok[-1] =~ /\A[0-9]+\z/;
     return (rk('subspecies'), 1) if @tok >= 3;
     return (rk('species'), 1)    if @tok == 2;
+    return (rk('no rank'), 1);
+}
 
-    my $w = $tok[0];
-    return (rk('no rank'), 1) unless defined $w;
-    return (rk('superfamily'), 1) if $w =~ /oidea\z/;
-    return (rk('suborder'), 1)    if $w =~ /(?:ineae|ina)\z/ && $w =~ /ineae\z/;
-    return (rk('subtribe'), 1)    if $w =~ /ina\z/;
-    return (rk('subfamily'), 1)   if $w =~ /(?:inae|oideae)\z/;
-    return (rk('tribe'), 1)       if $w =~ /(?:ini|eae)\z/;
-    return (rk('family'), 1)      if $w =~ /(?:idae|aceae)\z/;
-    return (rk('order'), 1)       if $w =~ /ales\z/;
-    return (rk('subphylum'), 1)   if $w =~ /(?:phytina|mycotina)\z/;
-    return (rk('phylum'), 1)      if $w =~ /(?:phyta|mycota)\z/;
-    return (rk('subclass'), 1)    if $w =~ /(?:phycidae|mycetidae)\z/;
-    return (rk('class'), 1)       if $w =~ /(?:phyceae|mycetes|opsida)\z/;
-    return (rk('genus'), 1);
+# ソースが rank を示していないとき、和名と学名から rank を決める (ユーザー決定)。
+#   1) 和名 (代表) の末尾が「階層レベルを示す単語」(README の「rank・subrank
+#      について」) なら、その階層
+#   2) 学名が複数語なら、その形から種以下の階層 (rank_from_sciname)
+#   3) どちらでも決まらなければ no rank。統合の前に Catalogue of Life と
+#      NCBI Taxonomy の体系を辿って rank と subrank を決める (external_validity)
+# **ウイルス名には 2) を当てない。** ウイルスには厳密な二名法が確立されておらず
+# (「Severe acute respiratory syndrome coronavirus 2」「Influenza A virus subtype
+# H1N1」)、語数で種や亜種を決めると誤る (ユーザー決定)。和名の接尾辞で決まらな
+# ければ no rank にして体系に任せる。
+sub rank_of_names {
+    my ($jap, $sci) = @_;
+    my $r = jap_rank_of($jap);
+    return ($r, 1) if defined $r;
+    return (rk('no rank'), 1) if looks_virus_name($sci);
+    return rank_from_sciname($sci);
+}
+
+# 和名 (代表) の末尾の階層語が示す rank。階層語で終わっていなければ undef。
+sub jap_rank_of {
+    my ($jap) = @_;
+    my $head = (defined $jap && length $jap) ? (split_japsyn($jap))[0] : '';
+    return undef unless defined $head && $head =~ /($JAP_RANK_WORD_RE)\z/;
+    return undef if $JAP_RANK_WORD_LOOSE{$1};
+    return $JAP_RANK_WORD{$1};
 }
 
 # プレースホルダと偽の和名を弾く。
@@ -2077,17 +2147,22 @@ sub reject_japname {
 #                           (「あかざ」「お辞儀草」「平家蟹」) は有効名にしない。
 #   種より上            ... 「カナ名」と「階層レベルを示す単語」の組み合わせで
 #                           あること (「アオサ藻綱」「アーケアメーバ下門」)。
+#   ウイルス            ... rank によらず「カナ名」であること。
 # 「A型インフルエンザウイルス」「ヒメギフチョウ北海道亜種」のように漢字や英数字を
 # 交えた標準和名があるので、**全体がカタカナであることは求めない**。
 # この条件を満たさない和名はシノニム (japvalid=0) として出力には残る。
 sub japname_valid_form {
-    my ($jap, $rank) = @_;
+    my ($jap, $rank, $sci) = @_;
     return 0 unless defined $jap && length $jap;
     return 0 unless $jap =~ /[\x{30A1}-\x{30FA}]/;      # カタカナを含むこと
     # 「類」は階層語ではなく、まとまりを漠然と指す語。種の階層の「アメマス類」
     # 「サクラマス類」(河川水辺の国勢調査) も、高次の「真正双子葉類」「ワニ類」
     # (Wikidata) も有効名にしない (ユーザー決定)。シノニムとしては残る。
     return 0 if $jap =~ /類\z/;
+    # 「カナ名＋階層語」は生物の分類群の和名の形。ウイルスの和名にはカナ名だけを
+    # 求める (ユーザー決定)。ウイルスは rank が決まらないことも多い (体系に名前が
+    # 無い株や亜型)。
+    return 1 if looks_virus_name($sci);
     return 1 if !defined $rank || $rank >= rk('species');
     return $jap =~ /(?:$JAP_HIGH_RANK_WORD_RE)\z/ ? 1 : 0;
 }
@@ -2136,6 +2211,9 @@ my $INFRA_CONNECTOR = qr/(?:subsp|ssp|var|subvar|f|forma|morph|nothosubsp|nothov
 sub species_of_infra {
     my ($sci) = @_;
     return undef unless defined $sci && $sci =~ /\A[A-Za-z .-]+\z/;
+    # ウイルスには厳密な二名法がないので、名前の形から種を取り出せない
+    # (「Merkel cell polyomavirus」が「Merkel cell」になる)
+    return undef if looks_virus_name($sci);
     return undef if is_hybrid_formula($sci);
     my @t = split / /, $sci;
     my $n = (@t > 1 && $t[1] eq 'x') ? 3 : 2;
@@ -2146,23 +2224,26 @@ sub species_of_infra {
     return join ' ', @t[ 0 .. $n - 1 ];
 }
 
-# 和名の接尾辞が示す階層と rank の差。階層語で終わっていなければ 0。
-# 「種」「種群」は階級ではなく記述として使われるので突き合わせない
-# (「トゲエラカゲロウ属の一種」「キヅタキジラミ近縁種」「シマドジョウ種群」)。
-my %JAP_RANK_WORD_LOOSE = map { $_ => 1 } ('種', '種群', '種亜群');
-
+# 和名の接尾辞が示す階層と rank・subrank の差。階層語で終わっていなければ 0。
+# 階層語の位置を「rank.01」、学名の位置を「rank.subrank」(subrank は前方ゼロ埋めの
+# 2桁) として差を取る (README の「rank・subrankについて」。科と上科の間の階層は
+# 18.02 なので、「〜科」との差は 0.99 段)。subrank が 10 以上でも上の rank を
+# 越えない (7.12 は 7.02 より下、8.01 より上)。**rank 0 (no rank) は位置が分からないので比べない。**
+# 統合の段で体系を辿って rank と subrank を決めてから比べ直す (merge_directory)。
 sub rank_word_gap {
-    my ($jap, $rank) = @_;
-    return 0 unless defined $jap && defined $rank;
+    my ($jap, $rank, $subrank) = @_;
+    return 0 unless defined $jap && defined $rank && $rank;
     return 0 unless $jap =~ /($JAP_RANK_WORD_RE)\z/;
     return 0 if $JAP_RANK_WORD_LOOSE{$1};
-    return $JAP_RANK_WORD{$1} - $rank;
+    $subrank = 1 unless defined $subrank && $subrank >= 1;
+    # 浮動小数点の誤差で 3 段ちょうどを取り違えないよう、100 倍の整数で引く
+    return (($JAP_RANK_WORD{$1} * 100 + 1) - ($rank * 100 + $subrank)) / 100;
 }
 
 # 和名の階層語と rank が離れすぎているか。離れていればその段数を返す。
 sub rank_word_far {
-    my ($jap, $rank) = @_;
-    my $gap = abs rank_word_gap($jap, $rank);
+    my ($jap, $rank, $subrank) = @_;
+    my $gap = abs rank_word_gap($jap, $rank, $subrank);
     return $gap >= $RANK_WORD_GAP ? $gap : 0;
 }
 
@@ -2424,7 +2505,14 @@ sub add_pair {
     if ($opt{nosplit}) { $head = norm_japname(defined $jap ? $jap : '') }
     else { ($head, @syn) = split_japsyn(defined $jap ? $jap : '', $opt{seps}) }
     $subrank = 1 unless defined $subrank && $subrank >= 1;
-    unless (defined $rank) { ($rank, $subrank) = rank_from_sciname($sci) }
+    unless (defined $rank) { ($rank, $subrank) = rank_of_names($head, $sci) }
+    # ソースが階級を持たないと明示した分類群 (Wikidata の「系統群」、CoL の
+    # unranked・clade) でも、和名が階層語で終わればその階層にする (ユーザー決定)。
+    # 決まらなければ 0 のまま残し、統合の前に体系を辿って決める。
+    if (!$rank) {
+        my $r = jap_rank_of($head);
+        ($rank, $subrank) = ($r, 1) if defined $r;
+    }
     my $jv = exists $opt{japvalid} ? ($opt{japvalid} ? 1 : 0) : 1;
     my $sv = exists $opt{scivalid} ? ($opt{scivalid} ? 1 : 0) : 1;
     # 和名欄の末尾に学名がそのまま付いている行があるので落とす。接続語を補う前の
@@ -2468,7 +2556,7 @@ sub add_pair {
     # 「ウコギ科 / Gamblea innovans (種)」のような行が残る。代表が外れたときは
     # レコードごと落とし、別名が外れたときはその名前だけを落とす。
     if (length $head) {
-        if (my $gap = rank_word_far($head, $rank)) {
+        if (my $gap = rank_word_far($head, $rank, $subrank)) {
             reject_japname($head, $sci, "和名の階層と rank が $gap 段ずれ");
             return;
         }
@@ -2501,7 +2589,7 @@ sub add_pair {
     # 括弧内の別名は和名シノニム扱い。学名側の有効性はそのまま引き継ぐ。
     for my $s (@syn) {
         next if is_placeholder($s, $sci);
-        if (my $gap = rank_word_far($s, $rank)) {
+        if (my $gap = rank_word_far($s, $rank, $subrank)) {
             reject_japname($s, $sci, "別名の階層と rank が $gap 段ずれ");
             next;
         }
@@ -2516,7 +2604,7 @@ sub add_pair {
     for my $n (map { $_->[0] } @names) {
         for my $b (base_japnames($n)) {
             next if $seen{$b}++ || is_placeholder($b, $sci);
-            next if rank_word_far($b, $rank);
+            next if rank_word_far($b, $rank, $subrank);
             push @names, [ $b, 0 ];
         }
     }
@@ -2644,7 +2732,7 @@ sub parse_ferngreenlist {
             $_ = defined $_ ? $_ : '' for ($jap, $japsyn, $sci, $famjap, $famsci, $old);
             add_pair(\@out, $famjap, $famsci, rk('family'), 1);
             next unless length trim($sci);
-            my ($rank, $subrank) = rank_from_sciname(norm_sciname($sci));
+            my ($rank, $subrank) = rank_of_names($jap, norm_sciname($sci));
             add_pair(\@out, $jap, $sci, $rank, $subrank);
             for my $s (split_japnames($japsyn)) {
                 add_pair(\@out, $s, $sci, $rank, $subrank, japvalid => 0);
@@ -2832,14 +2920,13 @@ sub parse_jaflist {
         note($src, sprintf('有効名を決められませんでした (%s を採用): %s',
                            $valid, join(' / ', @$cands)))
             if !$decided && @$cands > 1;
-        my ($rank, $subrank) = rank_from_sciname($valid);
         for my $j (@japnames) {
             my ($name, $jv, $nos2j) = @$j;
-            add_pair(\@out, $name, $valid, $rank, $subrank,
+            add_pair(\@out, $name, $valid, undef, undef,
                      japvalid => $jv, nos2j => $nos2j);
             for my $alt (@$cands) {
                 next if $alt eq $valid;
-                add_pair(\@out, $name, $alt, rank_from_sciname($alt),
+                add_pair(\@out, $name, $alt, undef, undef,
                          japvalid => $jv, scivalid => 0, nos2j => $nos2j);
             }
         }
@@ -3043,7 +3130,7 @@ sub parse_shigainsect {
             my ($a, $b) = ($f[$c1] // '', $f[$c2] // '');
             my ($sci, $jap) = looks_japanese($a) && !looks_japanese($b) ? ($b, $a) : ($a, $b);
             return unless length trim($sci) && length trim($jap);
-            my ($rank, $subrank) = rank_from_sciname(norm_sciname($sci));
+            my ($rank, $subrank) = rank_of_names($jap, norm_sciname($sci));
             add_pair(\@out, $jap, $sci, $rank, $subrank);
 
             my $ci = $idx->('異名・旧名');
@@ -3092,7 +3179,7 @@ sub parse_earthworms {
             my ($jap, $old, $new) = @f[3, 4, 5];
             my $valid = norm_sciname(length $new ? $new : $old);
             return unless length $valid && length $jap;
-            my ($rank, $subrank) = rank_from_sciname($valid);
+            my ($rank, $subrank) = rank_of_names($jap, $valid);
             add_pair(\@out, $jap, $valid, $rank, $subrank);
             my $oldn = norm_sciname($old);
             return if !length $oldn || $oldn eq $valid;
@@ -3138,7 +3225,7 @@ sub parse_ylist {
             next unless length $jap;
             my $n = norm_sciname($sci);
             next unless length $n;
-            my ($rank, $subrank) = rank_from_sciname($n);
+            my ($rank, $subrank) = rank_of_names($jap, $n);
             if ($status eq '標準') {
                 add_pair(\@out, $jap, $n, $rank, $subrank);
                 for my $s (split_japnames($alias)) {
@@ -3219,7 +3306,7 @@ sub parse_alltaxa {
                 }
                 next unless length $code && length $sci;
                 my ($rank, $subrank) = defined $rname ? (rk($rname), 1)
-                                                      : rank_from_sciname(norm_sciname($sci));
+                                                      : rank_of_names($jap, norm_sciname($sci));
                 if ($is_base) {
                     $base{$lv}{$code} = [ $jap, $sci ];
                     add_pair(\@out, $jap, $sci, $rank, $subrank, anc => \@up);
@@ -3358,7 +3445,7 @@ sub parse_lichens {
             next unless length $sci;
             next unless defined $ja && length squeeze(html_text($ja));
             my $jap = squeeze(html_text($ja));
-            my ($rank, $subrank) = rank_from_sciname($sci);
+            my ($rank, $subrank) = rank_of_names($jap, $sci);
             add_pair(\@out, $jap, $sci, $rank, $subrank);
             my ($head) = split_japsyn($jap);
             $jap_of{$sci} = $head if length $head && !exists $jap_of{$sci};
@@ -3382,7 +3469,7 @@ sub parse_lichens {
             next if $acc !~ / / && $syn =~ / /;
             my $jap = $jap_of{$acc};
             next unless defined $jap && length $jap;
-            my ($rank, $subrank) = rank_from_sciname($syn);
+            my ($rank, $subrank) = rank_of_names($jap, $syn);
             add_pair(\@out, $jap, $syn, $rank, $subrank, scivalid => 0);
         }
     }
@@ -3429,7 +3516,7 @@ sub parse_isopods {
             (my $atext = $acc->as_text) =~ s/\Aaccepted as\s*//;
             my ($good_sci, $good_jap) = split_sci_jap($atext);
             next unless length $good_sci;
-            my ($rank, $subrank) = rank_from_sciname($good_sci);
+            my ($rank, $subrank) = rank_of_names($good_jap, $good_sci);
             add_pair(\@out, $good_jap, $good_sci, $rank, $subrank);
             add_pair(\@out, $good_jap, $bad_sci, $rank, $subrank, scivalid => 0)
                 if length $bad_sci && $bad_sci ne $good_sci && length $good_jap;
@@ -3681,8 +3768,8 @@ sub naro_cell {
     }
 }
 
-# 「└」で始まる中間階層の rank を決める。和名の接尾辞を最優先し、
-# 次に学名の語尾を見る。決められないものは列の基底 rank に subrank=2 を当てる。
+# 「└」で始まる中間階層の rank を決める。和名の接尾辞を最優先し、決められない
+# ものは列の基底 rank に subrank=2 を当てる。学名の語尾からは推さない (ユーザー決定)。
 sub naro_rank {
     my ($col, $name, $jap, $is_sub) = @_;
     if (length $jap) {
@@ -3692,11 +3779,6 @@ sub naro_rank {
     }
     return (rk('subspecies'), 1)  if $col == 5;
     return (rk('subgenus'), 1)    if $col == 4;
-    return (rk('superfamily'), 1) if $name =~ /oidea\z/;
-    return (rk('subfamily'), 1)   if $name =~ /inae\z/;
-    return (rk('tribe'), 1)       if $name =~ /ini\z/;
-    return (rk('subtribe'), 1)    if $name =~ /ina\z/;
-    return (rk('family'), 1)      if $name =~ /idae\z/;
     return (rk($NARO_COL_RANK[$col]), $SUBRANK_INTERMEDIATE);
 }
 
@@ -3881,7 +3963,7 @@ sub parse_seaweeds {
             $sci = norm_sciname(squeeze(html_unescape(html_text(defined $sci ? $sci : ''))));
             next unless length $sci;
             ($cur_sci, $cur_jap) = ($sci, $jap);
-            ($cur_rank, $cur_subrank) = rank_from_sciname($sci);
+            ($cur_rank, $cur_subrank) = rank_of_names($jap, $sci);
             add_pair(\@out, $jap, $sci, $cur_rank, $cur_subrank);
         }
     }
@@ -3927,26 +4009,6 @@ sub seaweed_synonym {
 # PDF の CJK は行折り返しのときに空白なしで連結されるのが全ソース共通の規則
 # (「アツバ」+「サイハイゴケ」)。継続行は必ず空白を入れずに繋ぐこと。
 #-----------------------------------------------------------------------------
-# 和名の接尾辞から階層を決める。決められなければ undef。
-my %JAP_RANK_SUFFIX = (
-    '亜界' => 'subkingdom', '上門' => 'superphylum', '亜門' => 'subphylum', '門' => 'phylum',
-    '上綱' => 'superclass', '亜綱' => 'subclass', '下綱' => 'infraclass', '綱' => 'class',
-    '上目' => 'superorder', '亜目' => 'suborder', '下目' => 'infraorder', '目' => 'order',
-    '上科' => 'superfamily', '亜科' => 'subfamily', '科' => 'family',
-    '亜族' => 'subtribe', '族' => 'tribe', '亜連' => 'subtribe', '連' => 'tribe',
-    '亜属' => 'subgenus', '属' => 'genus', '節' => 'section',
-    '亜種' => 'subspecies', '変種' => 'varietas', '品種' => 'forma',
-);
-
-sub jap_rank_suffix {
-    my ($jap) = @_;
-    return undef unless defined $jap && length $jap;
-    for my $suffix (sort { length($b) <=> length($a) } keys %JAP_RANK_SUFFIX) {
-        return $JAP_RANK_SUFFIX{$suffix} if $jap =~ /\Q$suffix\E\z/;
-    }
-    return undef;
-}
-
 # 行内の日本語の連なりを取り出す。$last が真なら末尾側、偽なら最初の連なり。
 sub japanese_run {
     my ($line, $last) = @_;
@@ -4125,8 +4187,7 @@ sub parse_hattoria7 {
             }
             my $sci = norm_sciname($rec);
             next unless length $sci;
-            my $rname = jap_rank_suffix((split_japsyn($jap))[0]);
-            my ($rank, $subrank) = defined $rname ? (rk($rname), 1) : rank_from_sciname($sci);
+            my ($rank, $subrank) = rank_of_names($jap, $sci);
             add_pair(\@out, $jap, $sci, $rank, $subrank);
             my ($h) = split_japsyn($jap);
             $jap_of{$sci} = $h if length $h && !exists $jap_of{$sci};
@@ -4135,7 +4196,7 @@ sub parse_hattoria7 {
             my ($syn, $acc) = @$p;
             my $jap = $jap_of{$acc};
             next unless defined $jap && length $jap;
-            my ($rank, $subrank) = rank_from_sciname($syn);
+            my ($rank, $subrank) = rank_of_names($jap, $syn);
             add_pair(\@out, $jap, $syn, $rank, $subrank, scivalid => 0);
         }
     }
@@ -4186,8 +4247,7 @@ sub parse_hattoria9 {
             my $jap = japanese_tail($r);
             my $sci = norm_sciname($r);
             next unless length $sci && length $jap;
-            my $rname = jap_rank_suffix((split_japsyn($jap))[0]);
-            my ($rank, $subrank) = defined $rname ? (rk($rname), 1) : rank_from_sciname($sci);
+            my ($rank, $subrank) = rank_of_names($jap, $sci);
             add_pair(\@out, $jap, $sci, $rank, $subrank);
         }
     }
@@ -4374,7 +4434,7 @@ sub parse_col {
         next unless length $sci;
         my ($rank, $subrank) = exists $COL_RANK{$crank}
                              ? (rk($COL_RANK{$crank}), 1)
-                             : rank_from_sciname(norm_sciname($sci));
+                             : (undef, undef);
         my $valid = $COL_INVALID_STATUS{$status} ? 0 : 1;
         my ($acc, $acrank) = ('', '');
         if (!$valid && length $parent) {
@@ -4384,7 +4444,7 @@ sub parse_col {
         # 差し替え先の rank は差し替え先のものを使う (README の規定)
         my ($arank, $asubrank) = length $acc
             ? (exists $COL_RANK{$acrank} ? (rk($COL_RANK{$acrank}), 1)
-                                         : rank_from_sciname(norm_sciname($acc)))
+                                         : (undef, undef))
             : ($rank, $subrank);
         for my $j (@{ $jap{$id} }) {
             my ($name, $vsrc) = @$j;
@@ -4570,24 +4630,6 @@ my %WIKIDATA_RANK = (
     '系統群' => 'clade', 'クレード' => 'clade',
 );
 
-# ウイルスの学名は旧 ICTV 式の英語名で書かれていることがある
-# (「Influenza A virus」「West Nile virus」「Macacine herpesvirus 1」)。
-# norm_sciname の「名前らしいトークンだけ採る」規則は2語目以降の大文字始まりや
-# 数字で打ち切るので、そのままでは「Influenza」「West」「Macacine herpesvirus」に
-# なってしまう。ICTV の xlsx と同じ rawsci の扱いにするため、ウイルス系の名前を
-# 見分ける。語の途中に現れる綴りも拾うので ICTV の二名法
-# (「Alphainfluenzavirus influenzae」) もこちらを通るが、norm_sciname が
-# 切り詰めない形なので結果は変わらない。
-# **レルムや界の語尾 (-viria / -virae) は見ない。** 単語1語なので rawsci にする
-# 必要がなく、入れると「Coralliophila elvirae」のような種小名に当たってしまう。
-sub looks_virus_name {
-    my ($s) = @_;
-    return 0 unless defined $s && length $s;
-    return 1 if $s =~ /vir(?:us|oid|usoid)/i;
-    return 1 if $s =~ /\b(?:phages?|satellite)\b/i;
-    return 0;
-}
-
 sub parse_wikidata {
     my ($src, $paths) = @_;
     require Text::CSV;
@@ -4625,18 +4667,16 @@ sub parse_wikidata {
             # ‘Habanero’」は亜種と書かれている)。対になった引用符だけを見る。
             # 「O'nyong-nyong virus」のように名前の一部のアポストロフィは残す。
             next if $get->('sci') =~ /\x{2018}[^\x{2019}]*\x{2019}|'[^']*'|"[^"]*"/;
+            # ranks_ja が空か表にない階級名なら、和名の接尾辞と学名の形 (種以下だけ) から
+            # 決める (rank_of_names)。それでも決まらなければ no rank で、統合の前に
+            # 体系を辿って決める。
             my ($rank, $subrank);
             for my $r_ja (split /\|/, $get->('ranks_ja')) {
                 next unless exists $WIKIDATA_RANK{$r_ja};
                 ($rank, $subrank) = (rk($WIKIDATA_RANK{$r_ja}), 1);
                 last;
             }
-            unless (defined $rank) {
-                # 複数語の旧 ICTV 式のウイルス名は種の指定なので、語数から階層を
-                # 決める rank_from_sciname は使わない (3語を亜種とみなすため)。
-                ($rank, $subrank) = $raw && $sci =~ / /
-                                  ? (rk('species'), 1) : rank_from_sciname($sci);
-            }
+            ($rank, $subrank) = rank_of_names($jap, $sci) unless defined $rank;
             my @ids = ((length $qid ? "wikidata:$qid" : ()), (map { "ncbi:$_" } @ncbis),
                        (map { "wdparent:$_" } grep { length } split /\|/, $get->('parents')));
             add_pair(\@out, $jap, $sci, $rank, $subrank, rawsci => $raw, ids => \@ids);
@@ -4692,9 +4732,7 @@ sub parse_lichen_systematics {
             # 門のような上位の行は総大文字で書かれている
             $sci = ucfirst(lc $sci) if $sci =~ /\A[A-Z-]+\z/;
             my ($head) = split_japsyn($jap);
-            my $rname = jap_rank_suffix($head);
-            my ($rank, $subrank) = defined $rname ? (rk($rname), 1)
-                                                  : rank_from_sciname($sci);
+            my ($rank, $subrank) = rank_of_names($head, $sci);
             add_pair(\@out, $jap, $sci, $rank, $subrank);
         }
     }
@@ -4738,7 +4776,8 @@ sub parse_jsv_virus {
                 $j =~ s/[（(]([^（()）、,]{1,6})[）)]/$1/g;
             }
             return unless @jap;
-            my ($rank, $subrank) = rank_from_sciname($sci);
+            # Species 列の名前なので種 (情報源が示す階級)
+            my ($rank, $subrank) = (rk('species'), 1);
             for my $i (0 .. $#jap) {
                 add_pair(\@out, $jap[$i], $sci, $rank, $subrank,
                          rawsci => 1, japvalid => ($i == 0 ? 1 : 0));
@@ -4843,7 +4882,9 @@ sub rank_far_from_sources {
     return 0 unless defined $colrank && ref $ranks;
     my $far = 0;
     for my $r (keys %$ranks) {
-        next unless $r =~ /\A[0-9]+\z/;
+        # rank 0 (no rank) は位置が分からないので比べない。体系から決められた
+        # ものは external_validity が決めた rank に置き換えてある
+        next unless $r =~ /\A[0-9]+\z/ && $r;
         return 0 if $r >= rk('species') && $colrank >= rk('species');
         return 0 if abs($colrank - $r) < $RANK_WORD_GAP;
         $far = 1;
@@ -4851,10 +4892,65 @@ sub rank_far_from_sources {
     return $far;
 }
 
+# rank 0 (no rank) の学名の rank と subrank を、Catalogue of Life と NCBI Taxonomy の
+# 体系を辿って決める (README の「rank・subrankについて」)。体系の節点がその学名の
+# 位置を示しているので、節点の階級が rank.def にあればそれ、無ければ (unranked・
+# clade・rank.def にない階級) 祖先を辿って最初に rank.def の階級を持つ祖先の rank を
+# 採り、間に挟まった段数 + 1 を subrank にする (科と上科の間の階層は rank=18,
+# subrank=2)。シノニムの節点は有効名の節点と同じ分類群なので、自身の階級が
+# rank.def に無ければ有効名の節点から辿る。
+#
+# 節点の表は「ID => 親の ID<TAB>rank 番号 (0 は rank.def にない階級)<TAB>有効か」の
+# 文字列で持つ (CoL は数百万件あるので配列にしない)。
+sub taxonomy_walk {
+    my ($node, $id, $miss) = @_;
+    my $n = $node->{$id};
+    unless (defined $n) { $miss->{$id} = 1 if $miss; return }
+    my ($p, $r, $v) = split /\t/, $n, -1;
+    if (defined $v && !$v) {
+        return ($r, 1) if $r;
+        $id = $p;
+    }
+    my ($steps, %seen) = (0);
+    while (defined $id && length $id && !$seen{$id}++) {
+        $n = $node->{$id};
+        unless (defined $n) { $miss->{$id} = 1 if $miss; return }
+        ($p, $r) = split /\t/, $n, -1;
+        return ($r, $steps + 1) if $r;
+        $steps++;
+        $id = $p;
+    }
+    return;
+}
+
+# 学名ごとの候補の節点から rank と subrank を1つに決める。有効名の節点があれば
+# それだけを見る。同名異物などで結果が割れたら決めない (undef)。
+# 表に無い節点に行き当たったら決めずに %$miss へ入れる。呼び出し側がその節点を
+# 読み足してやり直す (種以下の節点は表に持たないが、種より下の unranked の節点
+# (ウイルスの株など) は種の節点を親に持つため)。
+sub taxonomy_rank_of {
+    my ($node, $ids, $valid, $miss) = @_;
+    my @use = grep { $valid->{$_} } @$ids;
+    @use = @$ids unless @use;
+    my (%res, %m);
+    for my $id (@use) {
+        my @rs = taxonomy_walk($node, $id, \%m);
+        $res{"$rs[0]\t$rs[1]"} = 1 if @rs;
+    }
+    if (%m) { $miss->{$_} = 1 for keys %m; return }
+    return unless keys(%res) == 1;
+    return [ split /\t/, (keys %res)[0] ];
+}
+
 sub external_validity {
     my ($name_bytes) = @_;
-    my (%col, %ncbi, %parent, %srank, %accepted);
-    return (\%col, \%ncbi, \%accepted) unless %$name_bytes;
+    my (%col, %ncbi, %parent, %srank, %accepted, %rankres);
+    return (\%col, \%ncbi, \%accepted, \%rankres) unless %$name_bytes;
+
+    # rank 0 (no rank) で出てくる学名。体系を辿って rank と subrank を決める
+    my %zero = map { $_ => 1 } grep { exists $name_bytes->{$_}{0} } keys %$name_bytes;
+    my %col_rank_num = map { $_ => rk($COL_RANK{$_}) } keys %COL_RANK;
+    my (%cnode, %czero, %cvalid);
 
     my $usage = File::Spec->catfile($basedir, 'AllTaxa', 'NameUsage.tsv');
     if (-f $usage) {
@@ -4864,9 +4960,21 @@ sub external_validity {
         while (my $line = <$fh>) {
             chomp $line;
             my @f = split /\t/, $line, 11;
+            # 体系を辿るための節点の表。種以下の節点は祖先にならないので、
+            # rank 0 の学名そのものの節点を除いて持たない。差し替え先の rank を
+            # 決めるのにも使うので、rank 0 の学名が無くても作る。
+            my $cr = $col_rank_num{ defined $f[9] ? $f[9] : '' } || 0;
+            my $cv = $COL_INVALID_STATUS{ defined $f[6] ? $f[6] : '' } ? 0 : 1;
+            $cnode{ $f[0] } = join "\t", (defined $f[4] ? $f[4] : ''), $cr, $cv
+                if $cr < rk('species');
             my $name = ref_sciname_bytes($f[7]);
             next unless defined $name;
             next unless exists $name_bytes->{$name};
+            if ($zero{$name}) {
+                push @{ $czero{$name} }, $f[0];
+                $cvalid{ $f[0] } = $cv;
+                $cnode{ $f[0] } = join "\t", (defined $f[4] ? $f[4] : ''), $cr, $cv;
+            }
             my $valid = $COL_INVALID_STATUS{ defined $f[6] ? $f[6] : '' } ? 0 : 1;
             # 同じ学名が別の提供元で有効名としても載っていれば有効名を採る
             $col{$name} = $valid if !exists $col{$name} || $valid;
@@ -4881,7 +4989,93 @@ sub external_validity {
             }
         }
         close $fh;
+    }
 
+    my $dmp = File::Spec->catfile($basedir, 'NCBITaxonomy', 'names.dmp');
+    my %nzero;
+    if (-f $dmp) {
+        open my $fh, '<', $dmp or die "読めません: $dmp: $!\n";
+        binmode $fh;
+        while (my $line = <$fh>) {
+            chomp $line;
+            my @f = split /\s*\|\s*/, $line, 5;
+            my $nm = ref_sciname_bytes(defined $f[1] ? $f[1] : '');
+            next unless length $nm;
+            next unless exists $name_bytes->{$nm};
+            my $valid = (defined $f[3] && $f[3] eq 'scientific name') ? 1 : 0;
+            $ncbi{$nm} = $valid if !exists $ncbi{$nm} || $valid;
+            # rank 0 の学名の節点 (taxonomy_walk の「有効か」は NCBI では常に 1)
+            push @{ $nzero{$nm}{$valid} }, $f[0]
+                if $zero{$nm} && defined $f[3]
+                && ($valid || $f[3] eq 'synonym' || $f[3] eq 'equivalent name');
+        }
+        close $fh;
+    }
+
+    # rank 0 の学名の rank と subrank を体系から決める。Catalogue of Life を基本とし
+    # (README の規定)、CoL で決まらなければ NCBI Taxonomy で決める。
+    if (%zero) {
+        # 表に無い節点に行き当たった学名は、その節点を読み足してやり直す。
+        # ファイルに無い節点は親の無い unranked として入れ、辿りを止める。
+        for my $round (1 .. 20) {
+            my %miss;
+            for my $n (keys %czero) {
+                next if $rankres{$n};
+                my $rs = taxonomy_rank_of(\%cnode, $czero{$n}, \%cvalid, \%miss);
+                $rankres{$n} = $rs if $rs;
+            }
+            last unless %miss && -f $usage;
+            col_scan($usage, \%miss, sub {
+                my ($id, $f) = @_;
+                my $cr = $col_rank_num{ defined $f->[9] ? $f->[9] : '' } || 0;
+                my $cv = $COL_INVALID_STATUS{ defined $f->[6] ? $f->[6] : '' } ? 0 : 1;
+                $cnode{$id} = join "\t", (defined $f->[4] ? $f->[4] : ''), $cr, $cv;
+            });
+            exists $cnode{$_} or $cnode{$_} = "\t0\t1" for keys %miss;
+        }
+        my @nleft = grep { !$rankres{$_} } keys %nzero;
+        my $nodes = File::Spec->catfile($basedir, 'NCBITaxonomy', 'nodes.dmp');
+        if (@nleft && -f $nodes) {
+            # scientific name の節点があればそれだけ、無ければシノニムの節点を見る
+            my %want;
+            for my $n (@nleft) {
+                $nzero{$n} = $nzero{$n}{1} || $nzero{$n}{0} || [];
+                $want{$_} = 1 for @{ $nzero{$n} };
+            }
+            my %nnode;
+            my $load = sub {
+                my ($extra) = @_;
+                open my $fh, '<', $nodes or die "読めません: $nodes: $!\n";
+                binmode $fh;
+                while (my $line = <$fh>) {
+                    my @f = split /\t\|\t/, $line, 4;
+                    my $r = (defined $f[2] && exists $RANK{ $f[2] }) ? $RANK{ $f[2] } : 0;
+                    $nnode{ $f[0] } = "$f[1]\t$r\t1" if $extra->{ $f[0] } || $r < rk('species');
+                }
+                close $fh;
+                exists $nnode{$_} or $nnode{$_} = "\t0\t1" for keys %$extra;
+            };
+            $load->(\%want);
+            for my $round (1 .. 20) {
+                my %miss;
+                for my $n (@nleft) {
+                    next if $rankres{$n};
+                    my $rs = taxonomy_rank_of(\%nnode, $nzero{$n}, {}, \%miss);
+                    $rankres{$n} = $rs if $rs;
+                }
+                last unless %miss;
+                $load->(\%miss);
+            }
+        }
+        # 同名異物の判定 (rank_far_from_sources) に使えるよう、ソースの rank の 0 を
+        # 体系から決めた rank に置き換える
+        for my $n (keys %rankres) {
+            delete $name_bytes->{$n}{0};
+            $name_bytes->{$n}{ $rankres{$n}[0] } = 1;
+        }
+    }
+
+    if (-f $usage) {
         # 有効名として採り直す学名を引く
         my %needp;
         for my $n (grep { !$col{$_} } keys %parent) {
@@ -4892,7 +5086,7 @@ sub external_validity {
             col_scan($usage, \%needp, sub {
                 my ($id, $f) = @_;
                 $pname{$id} = [ ref_sciname_bytes(defined $f->[7] ? $f->[7] : ''),
-                                (defined $f->[9] ? $f->[9] : '') ];
+                                (defined $f->[9] ? $f->[9] : ''), $id ];
             });
             for my $n (keys %parent) {
                 next if $col{$n};
@@ -4908,6 +5102,10 @@ sub external_validity {
                 # ソース側の階層のまま残す。
                 my $nr = exists $COL_RANK{ $srank{$n} } ? rk($COL_RANK{ $srank{$n} }) : undef;
                 my $ar = exists $COL_RANK{ $a->[1] }    ? rk($COL_RANK{ $a->[1] })    : undef;
+                # rank.def にない階級 (unranked・clade など) は位置が分からないので比べない。
+                # 差し替え先は体系を辿って位置を決める (taxonomy_walk)
+                $nr = undef unless $nr;
+                ($ar) = taxonomy_walk(\%cnode, $a->[2]) unless $ar;
                 if (defined $nr && defined $ar && $ar < $nr) { delete $col{$n}; next }
                 # **CoL が同じ綴りの別の分類群を指していることがある** (同名異物)。
                 # CoL の「Homoptera」は蛾の属、「Blattaria」はモウズイカ属の節で、
@@ -4930,22 +5128,6 @@ sub external_validity {
         }
     }
 
-    my $dmp = File::Spec->catfile($basedir, 'NCBITaxonomy', 'names.dmp');
-    if (-f $dmp) {
-        open my $fh, '<', $dmp or die "読めません: $dmp: $!\n";
-        binmode $fh;
-        while (my $line = <$fh>) {
-            chomp $line;
-            my @f = split /\s*\|\s*/, $line, 5;
-            my $nm = ref_sciname_bytes(defined $f[1] ? $f[1] : '');
-            next unless length $nm;
-            next unless exists $name_bytes->{$nm};
-            my $valid = (defined $f[3] && $f[3] eq 'scientific name') ? 1 : 0;
-            $ncbi{$nm} = $valid if !exists $ncbi{$nm} || $valid;
-        }
-        close $fh;
-    }
-
     # バイト列のキーを文字列のキーに直す
     my (%colc, %ncbic, %accc);
     $colc{ Encode::decode('UTF-8', $_, Encode::FB_DEFAULT) }  = $col{$_}  for keys %col;
@@ -4953,12 +5135,16 @@ sub external_validity {
     for my $n (keys %accepted) {
         # 差し替え先の rank も CoL のものを使う。CoL が亜種を種のシノニムとして
         # いる場合、和名だけ亜種の rank のまま残ると学名と食い違うため。
-        my ($an, $ar) = @{ $accepted{$n} };
-        my $rank = exists $COL_RANK{$ar} ? rk($COL_RANK{$ar}) : undef;
+        # rank.def にない階級なら体系を辿って rank と subrank を決める。
+        my ($an, $ar, $aid) = @{ $accepted{$n} };
+        my ($rank, $subrank) = (exists $COL_RANK{$ar} && rk($COL_RANK{$ar}))
+                             ? (rk($COL_RANK{$ar}), 1) : taxonomy_walk(\%cnode, $aid);
         $accc{ Encode::decode('UTF-8', $n, Encode::FB_DEFAULT) }
-            = [ Encode::decode('UTF-8', $an, Encode::FB_DEFAULT), $rank ];
+            = [ Encode::decode('UTF-8', $an, Encode::FB_DEFAULT), $rank, $subrank ];
     }
-    return (\%colc, \%ncbic, \%accc);
+    my %rankc;
+    $rankc{ Encode::decode('UTF-8', $_, Encode::FB_DEFAULT) } = $rankres{$_} for keys %rankres;
+    return (\%colc, \%ncbic, \%accc, \%rankc);
 }
 
 #-----------------------------------------------------------------------------
@@ -5061,9 +5247,10 @@ unless ($dry_run) {
     my @all  = grep { my $d = $_->{dir}; grep { $_ eq $d } @dirs } @SOURCES;
     # 学名の有効性は Catalogue of Life を基本とする。巨大なファイルを何度も
     # 走査しないよう、全ディレクトリ分の学名を集めてから1回だけ引く。
-    my ($colv, $ncbiv, $accepted) = external_validity(collect_scinames(\@all));
+    my ($colv, $ncbiv, $accepted, $rankres) = external_validity(collect_scinames(\@all));
     for my $dir (@dirs) {
-        merge_directory($dir, [ grep { $_->{dir} eq $dir } @SOURCES ], $colv, $ncbiv, $accepted);
+        merge_directory($dir, [ grep { $_->{dir} eq $dir } @SOURCES ], $colv, $ncbiv, $accepted,
+                        $rankres);
     }
     cleanup_intermediates(\@selected) if $clean;
     cleanup_rejected(\@selected) if !$keep && !$clean;
